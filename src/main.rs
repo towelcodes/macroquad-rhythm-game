@@ -1,15 +1,19 @@
-#[cfg(target_os = "macos")]
-use core_graphics2::event::{__CGEventTapProxy, CGEvent, CGEventType};
-
 use generational_arena::{Arena, Index};
 use macroquad::prelude::*;
-use std::ops::{Add, Div, Mul, Sub};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, RwLock};
 use std::{
     thread,
     time::{Duration, Instant},
 };
+
+use crate::entity::*;
+use crate::input::{KeyEvent, input_loop};
+use crate::tween::{Tween, TweenEasing};
+
+mod entity;
+mod input;
+mod tween;
 
 /*
 main thread has rendering logic
@@ -32,163 +36,6 @@ main thread has rendering logic
  *
  * docs: explain how to avoid race conditions
 */
-
-static INPUT_SENDER: OnceLock<Sender<KeyEvent>> = OnceLock::new();
-
-enum KeyEvent {
-    Down((u64, Instant)),
-    Up((u64, Instant)),
-}
-
-#[cfg(target_os = "macos")]
-fn cg_input_callback<'a>(
-    _proxy: *const __CGEventTapProxy,
-    event_type: CGEventType,
-    event: &'a CGEvent,
-) -> Option<CGEvent> {
-    match event_type {
-        CGEventType::KeyDown => {
-            use core_graphics2::event::CGEventField;
-            let keycode = event.get_integer_value_field(CGEventField::KeyboardEventKeycode);
-            INPUT_SENDER
-                .get()
-                .unwrap()
-                .send(KeyEvent::Down((keycode as u64, Instant::now())))
-                .unwrap();
-        }
-        CGEventType::KeyUp => {
-            use core_graphics2::event::CGEventField;
-            let keycode = event.get_integer_value_field(CGEventField::KeyboardEventKeycode);
-            INPUT_SENDER
-                .get()
-                .unwrap()
-                .send(KeyEvent::Up((keycode as u64, Instant::now())))
-                .unwrap();
-        }
-        _ => {}
-    }
-    None
-}
-
-/// Uses OS-specific APIs to capture low latency input.
-fn input_loop(tx: Sender<KeyEvent>) {
-    INPUT_SENDER
-        .set(tx)
-        .expect("Failed to initialise input send channel");
-    #[cfg(target_os = "macos")]
-    {
-        info!("starting input loop (core_graphics)");
-        use core_foundation::runloop::{CFRunLoop, kCFRunLoopCommonModes};
-        use core_graphics2::event::{
-            CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
-        };
-
-        let event_tap = CGEventTap::new(
-            CGEventTapLocation::HIDEventTap,
-            CGEventTapPlacement::HeadInsertEventTap,
-            CGEventTapOptions::Default,
-            vec![CGEventType::KeyDown, CGEventType::KeyUp],
-            cg_input_callback,
-        )
-        .expect("Failed to create event tap");
-        event_tap.enable(true);
-
-        let run_loop_source = event_tap.mach_port.create_runloop_source(0).unwrap();
-        let run_loop = CFRunLoop::get_current();
-        run_loop.add_source(&run_loop_source, unsafe { kCFRunLoopCommonModes });
-        CFRunLoop::run_current();
-    }
-}
-
-#[derive(PartialEq, Debug)]
-enum TweenState {
-    NotStarted,
-    Playing,
-    Finished,
-}
-
-#[derive(PartialEq, Debug)]
-enum TweenEasing {
-    Linear,
-    EaseInOut,
-    EaseOut,
-    EaseIn,
-}
-
-/// An animation playing over time
-/// TODO: Sync to audio clock
-struct Tween<T> {
-    value: T,
-    target: T,
-    start: Option<Instant>,
-    end: Instant,
-    state: TweenState,
-    easing: TweenEasing,
-}
-impl<T> Tween<T>
-where
-    T: Sub<Output = T>
-        + Add<Output = T>
-        + Mul<Output = T>
-        + Div<Output = T>
-        + From<f32>
-        + Copy
-        + PartialOrd,
-{
-    pub fn new(value: T, target: T, duration: Duration, easing: TweenEasing) -> Self {
-        Self {
-            value,
-            target,
-            easing,
-            start: None,
-            end: Instant::now()
-                .checked_add(duration)
-                .expect("Failed to calculate end time"),
-            state: TweenState::NotStarted,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn state(&self) -> &TweenState {
-        &self.state
-    }
-
-    /// Get the current value
-    pub fn get(&mut self) -> T {
-        if self.state == TweenState::Finished {
-            return self.target;
-        }
-        if self.start.is_none() {
-            self.start = Some(Instant::now());
-            self.state = TweenState::Playing;
-        }
-        let start = self.start.unwrap();
-        let multiplier = (start.elapsed().as_millis() as f32)
-            / (self.end.duration_since(start).as_millis() as f32);
-        let easing_multiplier = match self.easing {
-            TweenEasing::Linear => multiplier,
-            TweenEasing::EaseInOut => {
-                if multiplier < 0.5 {
-                    2f32 * multiplier * multiplier
-                } else {
-                    -1f32 + (4f32 - 2f32 * multiplier) * multiplier
-                }
-            }
-            TweenEasing::EaseOut => {
-                let t = multiplier - 1f32;
-                1f32 + t * t * t
-            }
-            TweenEasing::EaseIn => multiplier * multiplier * multiplier,
-        };
-
-        if multiplier > 1f32 {
-            self.state = TweenState::Finished;
-            return self.target;
-        }
-
-        self.value + ((self.target - self.value) * T::from(easing_multiplier))
-    }
-}
 
 /// Handles events, in sync with audio
 fn update_loop(
@@ -242,41 +89,6 @@ fn window_conf() -> Conf {
         window_width: 800,
         window_height: 600,
         ..Default::default()
-    }
-}
-
-trait Entity: Send + Sync {
-    fn draw(&self);
-}
-
-struct Sprite {
-    texture: Texture2D, /* should be a weak copy of the texture */
-    x: f32,
-    y: f32,
-}
-impl Entity for Sprite {
-    fn draw(&self) {
-        draw_texture(&self.texture, self.x, self.y, WHITE);
-    }
-}
-
-struct FpsCounter;
-impl Entity for FpsCounter {
-    fn draw(&self) {
-        let fps = get_fps();
-        let delta = get_frame_time();
-        draw_text(&format!("FPS {fps}"), 10.0, 20.0, 20.0, BLACK);
-        draw_text(&format!("Delta {delta}"), 10.0, 40.0, 20.0, BLACK);
-        draw_text(&format!("1 - Toggle Guides"), 10.0, 60.0, 20.0, BLACK);
-        draw_text(&format!("2 - Toggle HUD"), 10.0, 80.0, 20.0, BLACK);
-    }
-}
-
-struct GridGuides;
-impl Entity for GridGuides {
-    fn draw(&self) {
-        draw_line(0.0, 0.0, screen_width(), screen_height(), 2.0, RED);
-        draw_line(0.0, screen_height(), screen_width(), 0.0, 2.0, RED);
     }
 }
 
