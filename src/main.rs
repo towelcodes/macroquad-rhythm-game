@@ -3,6 +3,7 @@ use core_graphics2::event::{__CGEventTapProxy, CGEvent, CGEventType};
 
 use generational_arena::{Arena, Index};
 use macroquad::prelude::*;
+use std::ops::{Add, BitOr, Div, Mul, Shl, Sub};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::{
@@ -109,15 +110,24 @@ enum TweenState {
 /// An animation playing over time
 /// TODO: Sync to audio clock
 /// TODO: Use generic type
-struct Tween {
-    value: f32,
-    target: f32,
+struct Tween<T> {
+    value: T,
+    target: T,
     start: Option<Instant>,
     end: Instant,
     state: TweenState,
 }
-impl Tween {
-    pub fn new(value: f32, target: f32, duration: Duration) -> Self {
+impl<T> Tween<T>
+where
+    T: Sub<Output = T>
+        + Add<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>
+        + From<f32>
+        + Copy
+        + PartialOrd,
+{
+    pub fn new(value: T, target: T, duration: Duration) -> Self {
         Self {
             value,
             target,
@@ -134,7 +144,7 @@ impl Tween {
     }
 
     /// Get the current value
-    pub fn get(&mut self) -> f32 {
+    pub fn get(&mut self) -> T {
         if self.state == TweenState::Finished {
             return self.target;
         }
@@ -146,11 +156,11 @@ impl Tween {
         let multiplier = (start.elapsed().as_millis() as f32)
             / (self.end.duration_since(start).as_millis() as f32);
 
-        if multiplier > 1. {
+        if multiplier > 1f32 {
             self.state = TweenState::Finished;
             return self.target;
         }
-        self.target + ((self.target - self.value) * multiplier)
+        self.target + ((self.target - self.value) * T::from(multiplier))
     }
 }
 
@@ -276,7 +286,7 @@ async fn main() {
     let mut camera =
         Camera2D::from_display_rect(Rect::new(0., 0., screen_width(), screen_height()));
 
-    let mut camera_tween = Tween::new(0.0, 360.0, Duration::from_secs(10));
+    let mut camera_tween: Tween<f32> = Tween::new(0.0, 360.0, Duration::from_secs(10));
 
     loop {
         clear_background(WHITE);
