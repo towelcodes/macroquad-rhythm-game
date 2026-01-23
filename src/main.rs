@@ -99,9 +99,65 @@ fn input_loop(tx: Sender<KeyEvent>) {
     }
 }
 
+#[derive(PartialEq, Debug)]
+enum TweenState {
+    NotStarted,
+    Playing,
+    Finished,
+}
+
+/// An animation playing over time
+/// TODO: Sync to audio clock
+/// TODO: Use generic type
+struct Tween {
+    value: f32,
+    target: f32,
+    start: Option<Instant>,
+    end: Instant,
+    state: TweenState,
+}
+impl Tween {
+    pub fn new(value: f32, target: f32, duration: Duration) -> Self {
+        Self {
+            value,
+            target,
+            start: None,
+            end: Instant::now()
+                .checked_add(duration)
+                .expect("Failed to calculate end time"),
+            state: TweenState::NotStarted,
+        }
+    }
+
+    pub fn state(&self) -> &TweenState {
+        &self.state
+    }
+
+    /// Get the current value
+    pub fn get(&mut self) -> f32 {
+        if self.state == TweenState::Finished {
+            return self.target;
+        }
+        if self.start.is_none() {
+            self.start = Some(Instant::now());
+            self.state = TweenState::Playing;
+        }
+        let start = self.start.unwrap();
+        let multiplier = (start.elapsed().as_millis() as f32)
+            / (self.end.duration_since(start).as_millis() as f32);
+
+        if multiplier > 1. {
+            self.state = TweenState::Finished;
+            return self.target;
+        }
+        self.target + ((self.target - self.value) * multiplier)
+    }
+}
+
 /// Handles events, in sync with audio
 fn update_loop(
-    arena: Arc<RwLock<Arena<Box<dyn Entity>>>>,
+    hud_arena: Arc<RwLock<Arena<Box<dyn Entity>>>>,
+    world_arena: Arc<RwLock<Arena<Box<dyn Entity>>>>,
     tx: Sender<u32>,
     input_rx: Receiver<KeyEvent>,
 ) {
@@ -109,7 +165,7 @@ fn update_loop(
     let mut fps_counter: Option<Index> = None;
     let mut guides: Option<Index> = None;
     {
-        let mut guard = arena.write().unwrap();
+        let mut guard = hud_arena.write().unwrap();
         fps_counter = Some(guard.insert(Box::new(FpsCounter {})));
         guides = Some(guard.insert(Box::new(GridGuides {})));
     }
@@ -119,11 +175,18 @@ fn update_loop(
             Ok(event) => match event {
                 KeyEvent::Down((keycode, _instant)) => {
                     if keycode == 18 {
-                        let mut guard = arena.write().unwrap();
+                        let mut guard = hud_arena.write().unwrap();
                         if let Some(i) = fps_counter.take() {
                             guard.remove(i);
                         } else {
                             fps_counter = Some(guard.insert(Box::new(FpsCounter {})));
+                        }
+                    } else if keycode == 19 {
+                        let mut guard = hud_arena.write().unwrap();
+                        if let Some(i) = guides.take() {
+                            guard.remove(i);
+                        } else {
+                            guides = Some(guard.insert(Box::new(GridGuides {})));
                         }
                     }
                     info!("key down: {}", keycode);
@@ -190,17 +253,16 @@ async fn main() {
     let mut last_frame = Instant::now();
 
     // arena for entities
-    let arena: Arc<RwLock<Arena<Box<dyn Entity>>>> = Arc::new(RwLock::new(Arena::new()));
-    {
-        let mut guard = arena.write().unwrap();
-    }
+    let hud_arena: Arc<RwLock<Arena<Box<dyn Entity>>>> = Arc::new(RwLock::new(Arena::new()));
+    let world_arena: Arc<RwLock<Arena<Box<dyn Entity>>>> = Arc::new(RwLock::new(Arena::new()));
 
     let (input_tx, input_rx) = mpsc::channel();
     thread::spawn(move || input_loop(input_tx));
 
     let (update_tx, update_rx) = mpsc::channel();
-    let arena_clone = Arc::clone(&arena);
-    thread::spawn(move || update_loop(arena_clone, update_tx, input_rx));
+    let hud_arena_clone = Arc::clone(&hud_arena);
+    let world_arena_clone = Arc::clone(&world_arena);
+    thread::spawn(move || update_loop(hud_arena_clone, world_arena_clone, update_tx, input_rx));
 
     // let note_texture = load_texture("textures/note.png").await.unwrap();
     // arena.insert(Box::new(Sprite {
@@ -209,27 +271,45 @@ async fn main() {
     //     y: screen_height() / 2.0,
     // }));
 
+    // let render_target = render_target(320, 150);
+
+    let mut camera =
+        Camera2D::from_display_rect(Rect::new(0., 0., screen_width(), screen_height()));
+
+    let mut camera_tween = Tween::new(0.0, 360.0, Duration::from_secs(10));
+
     loop {
         clear_background(WHITE);
 
         let centre_x = screen_width() / 2.0;
         let centre_y = screen_height() / 2.0;
 
+        set_camera(&camera);
+
         draw_circle_lines(centre_x - 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
         draw_circle_lines(centre_x - 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
         draw_circle_lines(centre_x + 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
         draw_circle_lines(centre_x + 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
-        // draw_line(40.0, 40.0, 100.0, 200.0, 15.0, BLUE);
-        // draw_rectangle(screen_width() / 2.0 - 60.0, 100.0, 120.0, 60.0, GREEN);
-        // draw_circle(screen_width() - 30.0, screen_height() - 30.0, 15.0, YELLOW);
 
-        // render entities
+        // render world entities
         {
-            let guard = arena.read().unwrap();
+            let guard = world_arena.read().unwrap();
             for (_idx, value) in guard.iter() {
                 value.draw();
             }
         }
+
+        set_default_camera();
+        // render HUD entities
+        {
+            let guard = hud_arena.read().unwrap();
+            for (_idx, value) in guard.iter() {
+                value.draw();
+            }
+        }
+
+        // move camera
+        camera.rotation = camera_tween.get();
 
         // limit fps
         let elapsed = last_frame.elapsed();
