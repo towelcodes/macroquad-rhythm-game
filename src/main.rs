@@ -3,7 +3,7 @@ use core_graphics2::event::{__CGEventTapProxy, CGEvent, CGEventType};
 
 use generational_arena::{Arena, Index};
 use macroquad::prelude::*;
-use std::ops::{Add, BitOr, Div, Mul, Shl, Sub};
+use std::ops::{Add, Div, Mul, Sub};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::{
@@ -107,15 +107,23 @@ enum TweenState {
     Finished,
 }
 
+#[derive(PartialEq, Debug)]
+enum TweenEasing {
+    Linear,
+    EaseInOut,
+    EaseOut,
+    EaseIn,
+}
+
 /// An animation playing over time
 /// TODO: Sync to audio clock
-/// TODO: Use generic type
 struct Tween<T> {
     value: T,
     target: T,
     start: Option<Instant>,
     end: Instant,
     state: TweenState,
+    easing: TweenEasing,
 }
 impl<T> Tween<T>
 where
@@ -127,10 +135,11 @@ where
         + Copy
         + PartialOrd,
 {
-    pub fn new(value: T, target: T, duration: Duration) -> Self {
+    pub fn new(value: T, target: T, duration: Duration, easing: TweenEasing) -> Self {
         Self {
             value,
             target,
+            easing,
             start: None,
             end: Instant::now()
                 .checked_add(duration)
@@ -139,6 +148,7 @@ where
         }
     }
 
+    #[allow(dead_code)]
     pub fn state(&self) -> &TweenState {
         &self.state
     }
@@ -155,12 +165,28 @@ where
         let start = self.start.unwrap();
         let multiplier = (start.elapsed().as_millis() as f32)
             / (self.end.duration_since(start).as_millis() as f32);
+        let easing_multiplier = match self.easing {
+            TweenEasing::Linear => multiplier,
+            TweenEasing::EaseInOut => {
+                if multiplier < 0.5 {
+                    2f32 * multiplier * multiplier
+                } else {
+                    -1f32 + (4f32 - 2f32 * multiplier) * multiplier
+                }
+            }
+            TweenEasing::EaseOut => {
+                let t = multiplier - 1f32;
+                1f32 + t * t * t
+            }
+            TweenEasing::EaseIn => multiplier * multiplier * multiplier,
+        };
 
         if multiplier > 1f32 {
             self.state = TweenState::Finished;
             return self.target;
         }
-        self.target + ((self.target - self.value) * T::from(multiplier))
+
+        self.value + ((self.target - self.value) * T::from(easing_multiplier))
     }
 }
 
@@ -283,10 +309,20 @@ async fn main() {
 
     // let render_target = render_target(320, 150);
 
-    let mut camera =
-        Camera2D::from_display_rect(Rect::new(0., 0., screen_width(), screen_height()));
+    let mut camera = Camera2D {
+        zoom: vec2(1., screen_width() / screen_height()),
+        ..Default::default()
+    };
 
-    let mut camera_tween: Tween<f32> = Tween::new(0.0, 360.0, Duration::from_secs(10));
+    info!("{:?}", camera);
+    // let mut camera_tween = Tween::new(0.0, 360.0, Duration::from_secs(2), TweenEasing::EaseOut);
+    let mut cam_tween_x = Tween::new(2., 1., Duration::from_millis(600), TweenEasing::EaseOut);
+    let mut cam_tween_y = Tween::new(
+        (screen_width() / screen_height()) + 1.,
+        screen_width() / screen_height(),
+        Duration::from_millis(600),
+        TweenEasing::EaseOut,
+    );
 
     loop {
         clear_background(WHITE);
@@ -296,10 +332,15 @@ async fn main() {
 
         set_camera(&camera);
 
-        draw_circle_lines(centre_x - 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
-        draw_circle_lines(centre_x - 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
-        draw_circle_lines(centre_x + 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
-        draw_circle_lines(centre_x + 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
+        // camera space
+        // draw_circle_lines(centre_x - 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
+        // draw_circle_lines(centre_x - 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
+        // draw_circle_lines(centre_x + 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
+        // draw_circle_lines(centre_x + 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
+        draw_circle_lines(-0.15, 0.2, 0.1, 0.01, BLACK);
+        draw_circle_lines(-0.15, -0.2, 0.1, 0.01, BLACK);
+        draw_circle_lines(0.15, 0.2, 0.1, 0.01, BLACK);
+        draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
 
         // render world entities
         {
@@ -318,8 +359,24 @@ async fn main() {
             }
         }
 
+        draw_text(
+            &format!("camera zoom x {:?}", cam_tween_x.get()),
+            40.0,
+            screen_height() - 20.0,
+            20.0,
+            BLACK,
+        );
+        draw_text(
+            &format!("camera zoom y {:?}", cam_tween_y.get()),
+            40.0,
+            screen_height() - 40.0,
+            20.0,
+            BLACK,
+        );
+
         // move camera
-        camera.rotation = camera_tween.get();
+        camera.zoom = vec2(cam_tween_x.get(), cam_tween_y.get());
+        // camera.rotation = camera_tween.get();
 
         // limit fps
         let elapsed = last_frame.elapsed();
