@@ -1,7 +1,7 @@
 use generational_arena::{Arena, Index};
 use macroquad::prelude::*;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::{
     thread,
     time::{Duration, Instant},
@@ -9,10 +9,13 @@ use std::{
 
 use crate::entity::*;
 use crate::input::{KeyEvent, input_loop};
+use crate::state::GameState;
 use crate::tween::{Tween, TweenEasing};
 
+mod beatmap;
 mod entity;
 mod input;
+mod state;
 mod tween;
 
 /*
@@ -39,8 +42,9 @@ main thread has rendering logic
 
 /// Handles events, in sync with audio
 fn update_loop(
-    hud_arena: Arc<RwLock<Arena<Box<dyn Entity>>>>,
-    world_arena: Arc<RwLock<Arena<Box<dyn Entity>>>>,
+    global_data: GlobalData,
+    hud_arena: EntityArena,
+    world_arena: EntityArena,
     tx: Sender<u32>,
     input_rx: Receiver<KeyEvent>,
 ) {
@@ -49,7 +53,7 @@ fn update_loop(
     let mut guides: Option<Index> = None;
     {
         let mut guard = hud_arena.write().unwrap();
-        fps_counter = Some(guard.insert(Box::new(FpsCounter {})));
+        fps_counter = Some(guard.insert(Box::new(FpsCounter::new(Arc::clone(&global_data)))));
         guides = Some(guard.insert(Box::new(GridGuides {})));
     }
 
@@ -62,7 +66,9 @@ fn update_loop(
                         if let Some(i) = fps_counter.take() {
                             guard.remove(i);
                         } else {
-                            fps_counter = Some(guard.insert(Box::new(FpsCounter {})));
+                            fps_counter = Some(
+                                guard.insert(Box::new(FpsCounter::new(Arc::clone(&global_data)))),
+                            );
                         }
                     } else if keycode == 19 {
                         let mut guard = hud_arena.write().unwrap();
@@ -92,6 +98,15 @@ fn window_conf() -> Conf {
     }
 }
 
+#[derive(Default)]
+pub struct Data {
+    debug_lines: Mutex<Vec<String>>,
+    // current_state: GameState,
+}
+
+pub type GlobalData = Arc<Data>;
+pub type EntityArena = Arc<RwLock<Arena<Box<dyn Entity>>>>;
+
 #[macroquad::main(window_conf)]
 async fn main() {
     info!("starting up...");
@@ -100,17 +115,29 @@ async fn main() {
     let frame_duration = Duration::from_secs_f32(1.0 / target_fps as f32);
     let mut last_frame = Instant::now();
 
+    // global data
+    let global_data: GlobalData = Arc::new(Data::default());
+
     // arena for entities
-    let hud_arena: Arc<RwLock<Arena<Box<dyn Entity>>>> = Arc::new(RwLock::new(Arena::new()));
-    let world_arena: Arc<RwLock<Arena<Box<dyn Entity>>>> = Arc::new(RwLock::new(Arena::new()));
+    let hud_arena: EntityArena = Arc::new(RwLock::new(Arena::new()));
+    let world_arena: EntityArena = Arc::new(RwLock::new(Arena::new()));
 
     let (input_tx, input_rx) = mpsc::channel();
     thread::spawn(move || input_loop(input_tx));
 
     let (update_tx, update_rx) = mpsc::channel();
+    let global_data_clone = Arc::clone(&global_data);
     let hud_arena_clone = Arc::clone(&hud_arena);
     let world_arena_clone = Arc::clone(&world_arena);
-    thread::spawn(move || update_loop(hud_arena_clone, world_arena_clone, update_tx, input_rx));
+    thread::spawn(move || {
+        update_loop(
+            global_data_clone,
+            hud_arena_clone,
+            world_arena_clone,
+            update_tx,
+            input_rx,
+        )
+    });
 
     // let note_texture = load_texture("textures/note.png").await.unwrap();
     // arena.insert(Box::new(Sprite {
@@ -171,20 +198,14 @@ async fn main() {
             }
         }
 
-        draw_text(
-            &format!("camera zoom x {:?}", cam_tween_x.get()),
-            40.0,
-            screen_height() - 20.0,
-            20.0,
-            BLACK,
-        );
-        draw_text(
-            &format!("camera zoom y {:?}", cam_tween_y.get()),
-            40.0,
-            screen_height() - 40.0,
-            20.0,
-            BLACK,
-        );
+        // camera debug text
+        {
+            let mut debug_lines = global_data.debug_lines.lock().unwrap();
+            *debug_lines = vec![
+                format!("camera zoom x {:?}", cam_tween_x.get()),
+                format!("camera zoom y {:?}", cam_tween_y.get()),
+            ];
+        }
 
         // move camera
         camera.zoom = vec2(cam_tween_x.get(), cam_tween_y.get());

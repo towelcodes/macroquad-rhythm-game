@@ -4,7 +4,7 @@ use std::{
 };
 
 #[derive(PartialEq, Debug)]
-enum TweenState {
+pub enum TweenState {
     NotStarted,
     Playing,
     Finished,
