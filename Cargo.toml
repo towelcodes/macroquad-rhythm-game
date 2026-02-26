@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-core-foundation = "0.10.1"
-core-graphics2 = "0.4.1"
 generational-arena = "0.2.9"
+ron = "0.12.0"
+serde = { version = "1.0.228", features = ["derive"] }
+macroquad = "0.4.14"
 
 [target.'cfg(target_os="macos")'.dependencies]
-macroquad = "0.4.14"
+core-foundation = "0.10.1"
+core-graphics2 = "0.4.1"

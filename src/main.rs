@@ -12,6 +12,9 @@ use crate::input::{KeyEvent, input_loop};
 use crate::state::GameState;
 use crate::tween::{Tween, TweenEasing};
 
+#[cfg(test)]
+mod tests;
+
 mod beatmap;
 mod entity;
 mod input;
@@ -39,6 +42,10 @@ main thread has rendering logic
  *
  * docs: explain how to avoid race conditions
 */
+
+/*
+ * TODO:
+ */
 
 /// Handles events, in sync with audio
 fn update_loop(
@@ -91,7 +98,7 @@ fn update_loop(
 
 fn window_conf() -> Conf {
     Conf {
-        window_title: "BasicShapes".to_owned(),
+        window_title: "Game".to_owned(),
         window_width: 800,
         window_height: 600,
         ..Default::default()
