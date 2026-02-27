@@ -1,20 +1,21 @@
-use std::{collections::LinkedList, fs::File, io::Write};
-
-use crate::beatmap::{Beatmap, BeatmapMeta, HitObject, Lane};
+use crate::beatmap::{Beatmap, BeatmapMeta, HitObject, HitObjectType, Lane};
+use std::{cmp::Reverse, collections::BinaryHeap, fs::File, io::Write};
 
 #[test]
 fn create_beatmap() {
-    let hit_objects: LinkedList<HitObject> = LinkedList::from([
-        HitObject {
+    let hit_objects = BinaryHeap::from([
+        Reverse(HitObject {
             beat: 0,
             offset: 0.0,
             lane: Lane::RightUp,
-        },
-        HitObject {
+            ttype: HitObjectType::Chip,
+        }),
+        Reverse(HitObject {
             beat: 1,
             offset: 0.0,
             lane: Lane::RightDown,
-        },
+            ttype: HitObjectType::Chip,
+        }),
     ]);
 
     let meta = BeatmapMeta {
@@ -29,6 +30,7 @@ fn create_beatmap() {
         meta,
         hit_objects,
         bpm: 120,
+        time_signature: (4, 1.),
     };
 
     let serialize =
