@@ -58,6 +58,12 @@ fn update_loop(
     // create FPS counter and guides
     let mut fps_counter: Option<Index> = None;
     let mut guides: Option<Index> = None;
+    let mut world_guides: Option<Index> = None;
+    {
+        let mut guard = world_arena.write().unwrap();
+        world_guides = Some(guard.insert(Box::new(WorldGuides {})));
+    }
+
     {
         let mut guard = hud_arena.write().unwrap();
         fps_counter = Some(guard.insert(Box::new(FpsCounter::new(Arc::clone(&global_data)))));

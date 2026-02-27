@@ -47,3 +47,18 @@ impl Entity for GridGuides {
         draw_line(0.0, screen_height(), screen_width(), 0.0, 2.0, RED);
     }
 }
+
+pub struct WorldGuides;
+impl Entity for WorldGuides {
+    fn draw(&self) {
+        // draw_circle_lines(1. - 0.1, 0.1, 0.1, 0.005, BLUE);
+        for x in 0..11 {
+            for y in 0..11 {
+                draw_circle(0.1 * x as f32, 0.1 * y as f32, 0.005, BLUE);
+                draw_circle(-0.1 * x as f32, -0.1 * y as f32, 0.005, BLUE);
+                draw_circle(0.1 * x as f32, -0.1 * y as f32, 0.005, BLUE);
+                draw_circle(-0.1 * x as f32, 0.1 * y as f32, 0.005, BLUE);
+            }
+        }
+    }
+}
