@@ -3,7 +3,7 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, LinkedList};
 
 #[repr(u8)]
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
 pub enum Lane {
     LeftUp,
     LeftDown,
@@ -12,7 +12,7 @@ pub enum Lane {
 }
 
 #[repr(u8)]
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
 pub enum HitObjectType {
     Chip,
     Long,
@@ -20,8 +20,7 @@ pub enum HitObjectType {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct HitObject {
-    pub beat: u32,   // the numbered beat
-    pub offset: f32, // fractional offset; in beats
+    pub time: u32, // the time in ms, from the beginning of the song
     pub lane: Lane,
     pub ttype: HitObjectType, // type is a keyword
 }
@@ -33,13 +32,7 @@ impl PartialOrd for HitObject {
 }
 impl Ord for HitObject {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match other.beat.cmp(&self.beat) {
-            std::cmp::Ordering::Equal => other
-                .offset
-                .partial_cmp(&self.offset)
-                .unwrap_or(std::cmp::Ordering::Equal),
-            ord => ord,
-        }
+        other.time.cmp(&self.time)
     }
 }
 
@@ -54,13 +47,12 @@ pub struct BeatmapMeta {
 }
 
 /// The full data for one level.
-/// NOTE: The hit_objects BinaryHeap must be a Min-Heap
-/// (so objects need to be inserted with cmp::Reverse())
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Beatmap {
     // audio: todo
     pub meta: BeatmapMeta,
     pub bpm: u32,
-    pub time_signature: (u8, f32),
+    pub beats_per_bar: u8, // will affect where the bar lines are drawn, if enabled
+    // pub note_value: f32, // (not implemented) the note value as a fraction, where 1.0 -> 1 beat as specified by the BPM
     pub hit_objects: BinaryHeap<Reverse<HitObject>>,
 }

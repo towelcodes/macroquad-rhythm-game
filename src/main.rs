@@ -105,8 +105,8 @@ fn update_loop(
 fn window_conf() -> Conf {
     Conf {
         window_title: "Game".to_owned(),
-        window_width: 800,
-        window_height: 600,
+        window_width: 1280,
+        window_height: 720,
         ..Default::default()
     }
 }
@@ -195,6 +195,7 @@ async fn main() {
         draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
 
         // render world entities
+        // TODO: will be handed off to the current gamestate
         {
             let guard = world_arena.read().unwrap();
             for (_idx, value) in guard.iter() {
@@ -204,6 +205,7 @@ async fn main() {
 
         set_default_camera();
         // render HUD entities
+        // TODO: will be handed off to the current gamestate instead
         {
             let guard = hud_arena.read().unwrap();
             for (_idx, value) in guard.iter() {
@@ -224,6 +226,7 @@ async fn main() {
         camera.zoom = vec2(cam_tween_x.get(), cam_tween_y.get());
         // camera.rotation = camera_tween.get();
 
+        // always in main render loop
         // limit fps
         let elapsed = last_frame.elapsed();
         if elapsed < frame_duration {
