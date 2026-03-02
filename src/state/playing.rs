@@ -1,29 +1,12 @@
-use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, VecDeque},
-    sync::{Arc, RwLock},
-};
+use std::collections::VecDeque;
 
 use macroquad::prelude::*;
 
 use crate::{
     EntityArena, GlobalData,
     beatmap::{Beatmap, HitObject},
-    entity::Entity,
+    state::{GameState, StateTransition},
 };
-
-/// The game will always be in one of a fixed number of GameStates.
-/// The active state will own its own data, which it can hand off
-/// to the next state as necessary.
-pub trait GameState {
-    /// Called every frame, on the main thread.
-    async fn draw(&mut self);
-
-    /// Called every update tick, on the update thread.
-    fn update(&mut self);
-
-    fn close(self);
-}
 
 pub struct PlayingState {
     global_data: GlobalData,
@@ -121,7 +104,13 @@ impl GameState for PlayingState {
         self.time += delta as u32;
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        todo!()
+    }
+
+    fn should_transition(&self) -> Option<StateTransition> {
+        todo!()
+    }
 
     fn close(self) {
         info!("Closing PlayingState");

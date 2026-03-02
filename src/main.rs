@@ -9,7 +9,7 @@ use std::{
 
 use crate::entity::*;
 use crate::input::{KeyEvent, input_loop};
-use crate::state::GameState;
+use crate::state::{GameState, StateMachine};
 use crate::tween::{Tween, TweenEasing};
 
 #[cfg(test)]
@@ -47,7 +47,8 @@ main thread has rendering logic
  * TODO:
  */
 
-/// Handles events, in sync with audio
+/// Handles events
+/// TODO sync with audio
 fn update_loop(
     global_data: GlobalData,
     hud_arena: EntityArena,
@@ -114,7 +115,6 @@ fn window_conf() -> Conf {
 #[derive(Default)]
 pub struct Data {
     debug_lines: Mutex<Vec<String>>,
-    // current_state: GameState,
 }
 
 pub type GlobalData = Arc<Data>;
@@ -134,6 +134,13 @@ async fn main() {
     // arena for entities
     let hud_arena: EntityArena = Arc::new(RwLock::new(Arena::new()));
     let world_arena: EntityArena = Arc::new(RwLock::new(Arena::new()));
+
+    // state machine
+    let mut state_machine = StateMachine::new(
+        Arc::clone(&global_data),
+        Arc::clone(&world_arena),
+        Arc::clone(&hud_arena),
+    );
 
     let (input_tx, input_rx) = mpsc::channel();
     thread::spawn(move || input_loop(input_tx));
@@ -177,41 +184,44 @@ async fn main() {
     );
 
     loop {
-        clear_background(WHITE);
+        // clear_background(WHITE);
 
-        let centre_x = screen_width() / 2.0;
-        let centre_y = screen_height() / 2.0;
+        // let centre_x = screen_width() / 2.0;
+        // let centre_y = screen_height() / 2.0;
 
-        set_camera(&camera);
+        // set_camera(&camera);
 
         // camera space
         // draw_circle_lines(centre_x - 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
         // draw_circle_lines(centre_x - 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
         // draw_circle_lines(centre_x + 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
         // draw_circle_lines(centre_x + 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
-        draw_circle_lines(-0.15, 0.2, 0.1, 0.01, BLACK);
-        draw_circle_lines(-0.15, -0.2, 0.1, 0.01, BLACK);
-        draw_circle_lines(0.15, 0.2, 0.1, 0.01, BLACK);
-        draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
+        // draw_circle_lines(-0.15, 0.2, 0.1, 0.01, BLACK);
+        // draw_circle_lines(-0.15, -0.2, 0.1, 0.01, BLACK);
+        // draw_circle_lines(0.15, 0.2, 0.1, 0.01, BLACK);
+        // draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
 
         // render world entities
         // TODO: will be handed off to the current gamestate
-        {
-            let guard = world_arena.read().unwrap();
-            for (_idx, value) in guard.iter() {
-                value.draw();
-            }
-        }
+        // {
+        //     let guard = world_arena.read().unwrap();
+        //     for (_idx, value) in guard.iter() {
+        //         value.draw();
+        //     }
+        // }
 
-        set_default_camera();
+        // set_default_camera();
         // render HUD entities
         // TODO: will be handed off to the current gamestate instead
-        {
-            let guard = hud_arena.read().unwrap();
-            for (_idx, value) in guard.iter() {
-                value.draw();
-            }
-        }
+        // {
+        //     let guard = hud_arena.read().unwrap();
+        //     for (_idx, value) in guard.iter() {
+        //         value.draw();
+        //     }
+        // }
+
+        // draw active state
+        state_machine.draw().await;
 
         // camera debug text
         {
@@ -223,7 +233,7 @@ async fn main() {
         }
 
         // move camera
-        camera.zoom = vec2(cam_tween_x.get(), cam_tween_y.get());
+        // camera.zoom = vec2(cam_tween_x.get(), cam_tween_y.get());
         // camera.rotation = camera_tween.get();
 
         // always in main render loop
