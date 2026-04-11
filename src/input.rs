@@ -49,6 +49,7 @@ pub fn input_loop(tx: Sender<KeyEvent>) {
     INPUT_SENDER
         .set(tx)
         .expect("Failed to initialise input send channel");
+
     #[cfg(target_os = "macos")]
     {
         info!("starting input loop (core_graphics)");
@@ -71,5 +72,17 @@ pub fn input_loop(tx: Sender<KeyEvent>) {
         let run_loop = CFRunLoop::get_current();
         run_loop.add_source(&run_loop_source, unsafe { kCFRunLoopCommonModes });
         CFRunLoop::run_current();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        info!("starting input loop (winapi)");
+        todo!()
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        info!("starting input loop (fallback)");
+        unimplemented!()
     }
 }

@@ -1,11 +1,18 @@
 mod main_menu;
 mod playing;
 
-use std::mem;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::mpsc::Receiver;
+use std::thread;
+use std::time::{Duration, Instant};
+use std::{mem, sync::mpsc::Sender};
 
 use macroquad::prelude::*;
 
+use crate::entity::Entity;
+use crate::input::KeyEvent;
 use crate::{
     EntityArena, GlobalData,
     beatmap::Beatmap,
@@ -30,14 +37,6 @@ impl GameStateEnum {
         match self {
             Self::MainMenu(state) => state.draw().await,
             Self::Playing(state) => state.draw().await,
-        }
-    }
-
-    /// Called every update tick, on the update thread.
-    pub fn update(&mut self) {
-        match self {
-            Self::MainMenu(state) => state.update(),
-            Self::Playing(state) => state.update(),
         }
     }
 
@@ -78,10 +77,16 @@ pub struct StateMachine {
     global_data: GlobalData,
     world_arena: EntityArena,
     hud_arena: EntityArena,
+    input_rx: Rc<RefCell<Receiver<KeyEvent>>>,
 }
 
 impl StateMachine {
-    pub fn new(global_data: GlobalData, world_arena: EntityArena, hud_arena: EntityArena) -> Self {
+    pub fn new(
+        global_data: GlobalData,
+        world_arena: EntityArena,
+        hud_arena: EntityArena,
+        input_rx: Rc<RefCell<Receiver<KeyEvent>>>,
+    ) -> Self {
         Self {
             current_state: GameStateEnum::MainMenu(MainMenuState::new(
                 Arc::clone(&world_arena),
@@ -91,6 +96,7 @@ impl StateMachine {
             global_data,
             world_arena,
             hud_arena,
+            input_rx,
         }
     }
 
@@ -106,6 +112,7 @@ impl StateMachine {
                 beatmap,
                 Arc::clone(&self.world_arena),
                 Arc::clone(&self.hud_arena),
+                Rc::clone(&self.input_rx),
             )),
             _ => {
                 todo!()
@@ -127,7 +134,7 @@ impl StateMachine {
     }
 
     /// Called every update tick, on the update thread.
-    pub fn update(&mut self) {
+    pub fn update(&self) {
         self.current_state.update();
     }
 }
@@ -138,9 +145,6 @@ impl StateMachine {
 pub trait GameState {
     /// Called every frame, on the main thread.
     async fn draw(&mut self);
-
-    /// Called every update tick, on the update thread.
-    fn update(&mut self);
 
     /// Will return a StateTransition if the GameState is requesting
     /// transition to a new state. Checked every frame.

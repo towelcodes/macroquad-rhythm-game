@@ -1,11 +1,16 @@
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    sync::mpsc,
+    sync::mpsc::{Receiver, Sender},
+};
 
 use macroquad::prelude::*;
 
 use crate::{
     EntityArena, GlobalData,
     beatmap::{Beatmap, HitObject},
-    state::{GameState, StateTransition},
+    input::KeyEvent,
+    state::{GameState, StateTransition, UpdateLoopEnum},
 };
 
 pub struct PlayingState {
@@ -14,8 +19,9 @@ pub struct PlayingState {
     hud_arena: EntityArena,
     beatmap: Beatmap,
     active_hit_objects: VecDeque<HitObject>,
-    time: u32, // time in milliseconds
-    bpm: u32,  // bpm from beatmap; currently does not change, but may in future
+    events_rx: Receiver<KeyEvent>, // input events
+    time: u32,                     // time in milliseconds
+    bpm: u32,                      // bpm from beatmap; currently does not change, but may in future
 }
 impl PlayingState {
     pub fn init(
@@ -23,13 +29,16 @@ impl PlayingState {
         beatmap: Beatmap,
         world_arena: EntityArena,
         hud_arena: EntityArena,
+        events_rx: Receiver<KeyEvent>,
     ) -> Self {
         let bpm = beatmap.bpm;
+
         Self {
             global_data,
             world_arena,
             hud_arena,
             beatmap,
+            events_rx,
             active_hit_objects: VecDeque::new(), // we assume this is always sorted
             time: 0,
             bpm: bpm,
@@ -102,10 +111,6 @@ impl GameState for PlayingState {
         }
 
         self.time += delta as u32;
-    }
-
-    fn update(&mut self) {
-        todo!()
     }
 
     fn should_transition(&self) -> Option<StateTransition> {

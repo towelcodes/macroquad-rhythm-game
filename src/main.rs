@@ -1,5 +1,7 @@
 use generational_arena::{Arena, Index};
 use macroquad::prelude::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 use std::{
@@ -9,7 +11,7 @@ use std::{
 
 use crate::entity::*;
 use crate::input::{KeyEvent, input_loop};
-use crate::state::{GameState, StateMachine};
+use crate::state::{GameState, StateMachine, UpdateLoop};
 use crate::tween::{Tween, TweenEasing};
 
 #[cfg(test)]
@@ -55,6 +57,7 @@ fn update_loop(
     world_arena: EntityArena,
     tx: Sender<u32>,
     input_rx: Receiver<KeyEvent>,
+    update_loop: &mut Box<impl UpdateLoop>,
 ) {
     // create FPS counter and guides
     let mut fps_counter: Option<Index> = None;
@@ -70,6 +73,8 @@ fn update_loop(
         fps_counter = Some(guard.insert(Box::new(FpsCounter::new(Arc::clone(&global_data)))));
         guides = Some(guard.insert(Box::new(GridGuides {})));
     }
+
+    update_loop.update();
 
     loop {
         match input_rx.recv_timeout(Duration::from_millis(100)) {
@@ -135,6 +140,11 @@ async fn main() {
     let hud_arena: EntityArena = Arc::new(RwLock::new(Arena::new()));
     let world_arena: EntityArena = Arc::new(RwLock::new(Arena::new()));
 
+    // input loop
+    let (input_tx, input_rx) = mpsc::channel();
+    thread::spawn(move || input_loop(input_tx));
+    let input_rx_rc = Rc::new(RefCell::new(input_rx));
+
     // state machine
     let mut state_machine = StateMachine::new(
         Arc::clone(&global_data),
@@ -142,22 +152,21 @@ async fn main() {
         Arc::clone(&hud_arena),
     );
 
-    let (input_tx, input_rx) = mpsc::channel();
-    thread::spawn(move || input_loop(input_tx));
+    // let (update_tx, update_rx) = mpsc::channel();
+    // let global_data_clone = Arc::clone(&global_data);
+    // let hud_arena_clone = Arc::clone(&hud_arena);
+    // let world_arena_clone = Arc::clone(&world_arena);
 
-    let (update_tx, update_rx) = mpsc::channel();
-    let global_data_clone = Arc::clone(&global_data);
-    let hud_arena_clone = Arc::clone(&hud_arena);
-    let world_arena_clone = Arc::clone(&world_arena);
-    thread::spawn(move || {
-        update_loop(
-            global_data_clone,
-            hud_arena_clone,
-            world_arena_clone,
-            update_tx,
-            input_rx,
-        )
-    });
+    // thread::spawn(move || {
+    //     update_loop(
+    //         global_data_clone,
+    //         hud_arena_clone,
+    //         world_arena_clone,
+    //         update_tx,
+    //         input_rx,
+    //         &state_machine,
+    //     )
+    // });
 
     // let note_texture = load_texture("textures/note.png").await.unwrap();
     // arena.insert(Box::new(Sprite {

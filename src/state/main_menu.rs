@@ -67,9 +67,6 @@ impl GameState for MainMenuState {
     }
 
     /// todo
-    fn update(&mut self) {}
-
-    /// todo
     fn should_transition(&self) -> Option<StateTransition> {
         None
     }
