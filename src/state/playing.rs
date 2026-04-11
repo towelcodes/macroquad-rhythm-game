@@ -1,123 +1,99 @@
-use std::{
-    collections::VecDeque,
-    sync::mpsc,
-    sync::mpsc::{Receiver, Sender},
-};
+use std::collections::VecDeque;
 
+use crossbeam_channel::Receiver;
 use macroquad::prelude::*;
+use triple_buffer::Input;
 
 use crate::{
-    EntityArena, GlobalData,
+    GlobalData,
     beatmap::{Beatmap, HitObject},
     input::KeyEvent,
-    state::{GameState, StateTransition, UpdateLoopEnum},
+    update::StateTransition,
 };
 
-pub struct PlayingState {
-    global_data: GlobalData,
-    world_arena: EntityArena,
-    hud_arena: EntityArena,
+pub struct PlayingLogicData {
     beatmap: Beatmap,
     active_hit_objects: VecDeque<HitObject>,
-    events_rx: Receiver<KeyEvent>, // input events
-    time: u32,                     // time in milliseconds
-    bpm: u32,                      // bpm from beatmap; currently does not change, but may in future
+    time: u32,
+    bpm: u32,
+    lane_speed: u32,
 }
-impl PlayingState {
-    pub fn init(
-        global_data: GlobalData,
-        beatmap: Beatmap,
-        world_arena: EntityArena,
-        hud_arena: EntityArena,
-        events_rx: Receiver<KeyEvent>,
-    ) -> Self {
-        let bpm = beatmap.bpm;
 
-        Self {
-            global_data,
-            world_arena,
-            hud_arena,
-            beatmap,
-            events_rx,
-            active_hit_objects: VecDeque::new(), // we assume this is always sorted
-            time: 0,
-            bpm: bpm,
-        }
+pub struct PlayingRenderData<'a> {
+    beatmap: Beatmap,
+    active_hit_objects: &'a [HitObject],
+    time: u32,
+    bpm: u32,
+    lane_speed: u32,
+}
+
+pub fn init(beatmap: Beatmap) -> PlayingLogicData {
+    PlayingLogicData {
+        beatmap,
+        active_hit_objects: VecDeque::new(),
+        time: 0,
+        bpm: beatmap.bpm,
+        lane_speed: 20,
     }
 }
-impl GameState for PlayingState {
-    async fn draw(&mut self) {
-        let delta = get_frame_time() * 1000.0; // ms
-        let lane_speed = 20;
-        let render_up_to = self.time + lane_speed * 50;
 
-        // note: bar rendering is not implemented
-        // let beat_time = (self.bpm / (60 * 60)) * 1000; // ms
-        // let per_bar = self.beatmap.beats_per_bar;
+pub fn close(data: PlayingLogicData) {}
 
-        // render world entities
-        {
-            let guard = self.hud_arena.read().unwrap();
-            for (_idx, value) in guard.iter() {
-                value.draw();
+pub fn update(
+    data: &mut PlayingLogicData,
+    global_data: GlobalData,
+    input_rx: Receiver<KeyEvent>,
+    render_input: &mut Input<PlayingRenderData>,
+) -> Option<StateTransition> {
+    let render_up_to = data.time + data.lane_speed * 50;
+
+    // process incoming messages (hits) ---
+    // remove them from the heap
+    // render score
+
+    // render hit objects ---
+    // - peek the next hit element and check if it is in range
+    loop {
+        if let Some(next) = data.beatmap.hit_objects.peek() {
+            if next.0.time <= render_up_to {
+                data.active_hit_objects
+                    .push_back(data.beatmap.hit_objects.pop().unwrap().0);
+                continue;
             }
         }
-
-        // render HUD entities
-        {
-            let guard = self.hud_arena.read().unwrap();
-            for (_idx, value) in guard.iter() {
-                value.draw();
+        break;
+    }
+    // - remove old hit objects
+    loop {
+        if let Some(last) = data.active_hit_objects.front() {
+            if last.time + data.lane_speed * 50 < data.time {
+                data.active_hit_objects.pop_front();
+                continue;
             }
         }
-
-        // process incoming messages (hits) ---
-        // remove them from the heap
-        // render score
-
-        // render hit objects ---
-        // - peek the next hit element and check if it is in range
-        loop {
-            if let Some(next) = self.beatmap.hit_objects.peek() {
-                if next.0.time <= render_up_to {
-                    self.active_hit_objects
-                        .push_back(self.beatmap.hit_objects.pop().unwrap().0);
-                    continue;
-                }
-            }
-            break;
-        }
-        // - remove old hit objects
-        loop {
-            if let Some(last) = self.active_hit_objects.front() {
-                if last.time + lane_speed * 50 < self.time {
-                    self.active_hit_objects.pop_front();
-                    continue;
-                }
-            }
-            break;
-        }
-        // - render hit objects in the arena
-        for entity in &self.active_hit_objects {
-            // Calculate the position of the hit object based on its time
-            let time_offset = entity.time as i32 - self.time as i32;
-            let y_position = (time_offset as f32 / (lane_speed * 50) as f32) * screen_height();
-
-            // Render the hit object at the calculated position
-            let x_position =
-                entity.lane as u8 as f32 * (screen_width() / 4.0) + (screen_width() / 8.0);
-
-            draw_circle(x_position, y_position, 20.0, WHITE);
-        }
-
-        self.time += delta as u32;
+        break;
     }
 
-    fn should_transition(&self) -> Option<StateTransition> {
-        todo!()
-    }
+    render_input.write(PlayingRenderData {
+        beatmap: data.beatmap.clone(),
+        active_hit_objects: &data.active_hit_objects.as_slices().0, // TODO check this?
+        time: data.time,
+        bpm: data.bpm,
+        lane_speed: data.lane_speed,
+    });
+    None
+}
 
-    fn close(self) {
-        info!("Closing PlayingState");
+pub async fn render<'a>(data: &PlayingRenderData<'a>) {
+    // - render hit objects in the arena
+    for entity in data.active_hit_objects {
+        // Calculate the position of the hit object based on its time
+        let time_offset = entity.time as i32 - data.time as i32;
+        let y_position = (time_offset as f32 / (data.lane_speed * 50) as f32) * screen_height();
+
+        // Render the hit object at the calculated position
+        let x_position = entity.lane as u8 as f32 * (screen_width() / 4.0) + (screen_width() / 8.0);
+
+        draw_circle(x_position, y_position, 20.0, WHITE);
     }
 }

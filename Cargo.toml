@@ -9,6 +9,7 @@ ron = "0.12.0"
 serde = { version = "1.0.228", features = ["derive"] }
 macroquad = "0.4.14"
 crossbeam-channel = "0.5.15"
+triple_buffer = "9.0.0"
 
 [target.'cfg(target_os="macos")'.dependencies]
 core-foundation = "0.10.1"

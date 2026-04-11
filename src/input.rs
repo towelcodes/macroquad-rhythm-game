@@ -1,8 +1,6 @@
+use crossbeam_channel::Sender;
 use macroquad::prelude::*;
-use std::{
-    sync::{OnceLock, mpsc::Sender},
-    time::Instant,
-};
+use std::{sync::OnceLock, time::Instant};
 
 #[cfg(target_os = "macos")]
 use core_graphics2::event::{__CGEventTapProxy, CGEvent, CGEventType};
