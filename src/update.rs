@@ -5,16 +5,18 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, Sender};
-use generational_arena::Index;
 use macroquad::prelude::{info, state_machine};
 use triple_buffer::{Input, Output};
 
 use crate::{
     GlobalData,
+    beatmap::Beatmap,
     entity::{FpsCounter, GridGuides, WorldGuides},
     input::KeyEvent,
     state::{
         main_menu::{MainMenuLogicData, MainMenuRenderData},
+        playing::{PlayingLogicData, PlayingRenderData},
+        song_select::{SongSelectLogicData, SongSelectRenderData},
         *,
     },
 };
@@ -66,6 +68,7 @@ pub enum GameState {
     Playing(PlayingLogicData),
 }
 
+#[derive(Clone)]
 pub enum RenderState {
     None,
     MainMenu(MainMenuRenderData),
@@ -73,10 +76,11 @@ pub enum RenderState {
     Playing(PlayingRenderData),
 }
 
+// TODO do this properly
 pub enum StateTransition {
     MainMenu,
     SongSelect,
-    StartSong,
+    StartBeatmap(Beatmap),
     // Results,
 }
 
@@ -103,15 +107,30 @@ impl StateMachine {
     }
 
     fn update(&mut self) {
-        let should_transition = match self.current_state {
-            GameState::MainMenu(data) => main_menu::update(data),
-            GameState::SongSelect(data) => song_select::update(data),
-            GameState::Playing(data) => playing::update(data),
+        let should_transition = match &mut self.current_state {
+            GameState::MainMenu(data) => main_menu::update(
+                data,
+                Arc::clone(&self.global_data),
+                self.input_rx.clone(),
+                &mut self.render_input,
+            ),
+            GameState::SongSelect(data) => song_select::update(
+                data,
+                Arc::clone(&self.global_data),
+                self.input_rx.clone(),
+                &mut self.render_input,
+            ),
+            GameState::Playing(data) => playing::update(
+                data,
+                Arc::clone(&self.global_data),
+                self.input_rx.clone(),
+                &mut self.render_input,
+            ),
         };
 
         if let Some(transition) = should_transition {
             // transition away from current state
-            match self.current_state {
+            match &mut self.current_state {
                 GameState::MainMenu(data) => main_menu::close(data),
                 GameState::SongSelect(data) => song_select::close(data),
                 GameState::Playing(data) => playing::close(data),
@@ -119,9 +138,11 @@ impl StateMachine {
 
             // transition to new state
             self.current_state = match transition {
-                StateTransition::MainMenu => GameState::main_menu(main_menu::init()),
-                StateTransition::SongSelect => GameState::song_select(song_select::init()),
-                StateTransition::StartSong => GameState::playing(playing::init()),
+                StateTransition::MainMenu => GameState::MainMenu(main_menu::init()),
+                StateTransition::SongSelect => GameState::SongSelect(song_select::init()),
+                StateTransition::StartBeatmap(beatmap) => {
+                    GameState::Playing(playing::init(beatmap))
+                }
             };
         }
     }

@@ -107,7 +107,9 @@ async fn main() {
     loop {
         match render_output.read() {
             RenderState::MainMenu(data) => main_menu::render(data).await,
-            _ => {}
+            RenderState::SongSelect(data) => song_select::render(data).await,
+            RenderState::Playing(data) => playing::render(data).await,
+            RenderState::None => {}
         };
 
         // clear_background(WHITE);

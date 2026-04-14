@@ -18,7 +18,7 @@ pub enum HitObjectType {
     Long,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct HitObject {
     pub time: u32, // the time in ms, from the beginning of the song
     pub lane: Lane,

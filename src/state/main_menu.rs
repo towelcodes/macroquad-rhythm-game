@@ -4,16 +4,14 @@ use triple_buffer::Input;
 
 use crate::{
     GlobalData,
-    entity::Entity,
     input::KeyEvent,
     update::{RenderState, StateTransition},
 };
 
 pub struct MainMenuLogicData {}
 
-pub struct MainMenuRenderData {
-    global_data: GlobalData,
-}
+#[derive(Clone)]
+pub struct MainMenuRenderData {}
 
 /// Run when initialiing the state (blocks update thread)
 pub fn init() -> MainMenuLogicData {
@@ -21,13 +19,13 @@ pub fn init() -> MainMenuLogicData {
 }
 
 /// Run when closing the state (blocks update thread)
-pub fn close(data: MainMenuLogicData) {}
+pub fn close(data: &MainMenuLogicData) {}
 
 pub fn update(
-    data: MainMenuLogicData,
+    data: &mut MainMenuLogicData,
     global_data: GlobalData,
     input_rx: Receiver<KeyEvent>,
-    render_input: Input<RenderState>,
+    render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
     None
 }
@@ -48,19 +46,19 @@ pub async fn render(data: &MainMenuRenderData) {
     draw_circle_lines(0.15, 0.2, 0.1, 0.01, BLACK);
     draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
 
-    {
-        let guard = data.world_arena.read().unwrap();
-        for (_idx, value) in guard.iter() {
-            value.draw();
-        }
-    }
+    // {
+    //     let guard = data.world_arena.read().unwrap();
+    //     for (_idx, value) in guard.iter() {
+    //         value.draw();
+    //     }
+    // }
 
     // render HUD entities in screen space
-    set_default_camera();
-    {
-        let guard = data.hud_arena.read().unwrap();
-        for (_idx, value) in guard.iter() {
-            value.draw();
-        }
-    }
+    // set_default_camera();
+    // {
+    //     let guard = data.hud_arena.read().unwrap();
+    //     for (_idx, value) in guard.iter() {
+    //         value.draw();
+    //     }
+    // }
 }

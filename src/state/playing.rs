@@ -8,7 +8,7 @@ use crate::{
     GlobalData,
     beatmap::{Beatmap, HitObject},
     input::KeyEvent,
-    update::StateTransition,
+    update::{RenderState, StateTransition},
 };
 
 pub struct PlayingLogicData {
@@ -19,31 +19,35 @@ pub struct PlayingLogicData {
     lane_speed: u32,
 }
 
-pub struct PlayingRenderData<'a> {
-    beatmap: Beatmap,
-    active_hit_objects: &'a [HitObject],
+#[derive(Clone)]
+pub struct PlayingRenderData {
+    active_hit_objects: Vec<HitObject>,
     time: u32,
     bpm: u32,
     lane_speed: u32,
 }
 
 pub fn init(beatmap: Beatmap) -> PlayingLogicData {
+    debug!("Init Playing state");
+    let bpm = beatmap.bpm;
     PlayingLogicData {
         beatmap,
         active_hit_objects: VecDeque::new(),
         time: 0,
-        bpm: beatmap.bpm,
+        bpm,
         lane_speed: 20,
     }
 }
 
-pub fn close(data: PlayingLogicData) {}
+pub fn close(data: &PlayingLogicData) {
+    debug!("Closing Playing state");
+}
 
 pub fn update(
     data: &mut PlayingLogicData,
     global_data: GlobalData,
     input_rx: Receiver<KeyEvent>,
-    render_input: &mut Input<PlayingRenderData>,
+    render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
     let render_up_to = data.time + data.lane_speed * 50;
 
@@ -74,19 +78,18 @@ pub fn update(
         break;
     }
 
-    render_input.write(PlayingRenderData {
-        beatmap: data.beatmap.clone(),
-        active_hit_objects: &data.active_hit_objects.as_slices().0, // TODO check this?
+    render_input.write(RenderState::Playing(PlayingRenderData {
+        active_hit_objects: data.active_hit_objects.clone().into(), // TODO check this?
         time: data.time,
         bpm: data.bpm,
         lane_speed: data.lane_speed,
-    });
+    }));
     None
 }
 
-pub async fn render<'a>(data: &PlayingRenderData<'a>) {
+pub async fn render(data: &PlayingRenderData) {
     // - render hit objects in the arena
-    for entity in data.active_hit_objects {
+    for entity in &data.active_hit_objects {
         // Calculate the position of the hit object based on its time
         let time_offset = entity.time as i32 - data.time as i32;
         let y_position = (time_offset as f32 / (data.lane_speed * 50) as f32) * screen_height();
