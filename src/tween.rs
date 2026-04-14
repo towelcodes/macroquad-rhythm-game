@@ -51,9 +51,16 @@ where
         }
     }
 
-    #[allow(dead_code)]
     pub fn state(&self) -> &TweenState {
         &self.state
+    }
+
+    pub fn value(&self) -> T {
+        self.value
+    }
+
+    pub fn target(&self) -> T {
+        self.target
     }
 
     /// Get the current value

@@ -1,4 +1,5 @@
 use generational_arena::{Arena, Index};
+use macroquad::miniquad::conf::Platform;
 use macroquad::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -53,56 +54,62 @@ fn window_conf() -> Conf {
         window_title: "Game".to_owned(),
         window_width: 1280,
         window_height: 720,
+        platform: Platform {
+            swap_interval: Some(0), // vsync
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
 
 #[derive(Default)]
-pub struct Data {
-    debug_lines: Mutex<Vec<String>>,
+pub struct Data {}
+
+#[derive(Debug, Clone, Default)]
+pub struct DebugData {
+    show: bool,
+    update_delta: u128,
+    update_target: u128,
 }
 
 pub type GlobalData = Arc<Data>;
-// pub type EntityArena = Arc<RwLock<Arena<Box<dyn Entity>>>>;
 
 #[macroquad::main(window_conf)]
 async fn main() {
     info!("starting up...");
 
-    let frame_duration = Duration::from_secs_f32(1.0 / 60.0 as f32);
-    let mut last_frame = Instant::now();
-
     // global data
     let global_data: GlobalData = Arc::new(Data::default());
 
-    // arena for entities
-    // let hud_arena: EntityArena = Arc::new(RwLock::new(Arena::new()));
-    // let world_arena: EntityArena = Arc::new(RwLock::new(Arena::new()));
-
     // render data buffer
-    let (mut render_input, mut render_output) = triple_buffer(&RenderState::None);
+    let (render_input, mut render_output) = triple_buffer(&RenderState::None);
+
+    // debug data buffer
+    let (mut debug_input, mut debug_output) = triple_buffer(&DebugData::default());
 
     // input loop
     let (input_tx, input_rx) = crossbeam_channel::unbounded();
-    thread::spawn(move || input_loop(input_tx));
+    thread::Builder::new()
+        .name("input".to_string())
+        .spawn(move || input_loop(input_tx))
+        .expect("Failed to spawn input thread");
 
     // update thread
-    thread::spawn(move || start_update_thread(Arc::clone(&global_data), input_rx, render_input));
+    thread::Builder::new()
+        .name("update".to_string())
+        .spawn(move || {
+            start_update_thread(
+                Arc::clone(&global_data),
+                input_rx,
+                render_input,
+                &mut debug_input,
+            )
+        })
+        .expect("Failed to spawn update thread");
 
-    let mut camera = Camera2D {
-        zoom: vec2(1., screen_width() / screen_height()),
-        ..Default::default()
-    };
-
-    info!("{:?}", camera);
-    // let mut camera_tween = Tween::new(0.0, 360.0, Duration::from_secs(2), TweenEasing::EaseOut);
-    let mut cam_tween_x = Tween::new(2., 1., Duration::from_millis(600), TweenEasing::EaseOut);
-    let mut cam_tween_y = Tween::new(
-        (screen_width() / screen_height()) + 1.,
-        screen_width() / screen_height(),
-        Duration::from_millis(600),
-        TweenEasing::EaseOut,
-    );
+    let target_fps = 120.0;
+    let target_duration = Duration::from_secs_f32(1.0 / target_fps);
+    let mut last_frame = Instant::now();
 
     loop {
         match render_output.read() {
@@ -112,65 +119,30 @@ async fn main() {
             RenderState::None => {}
         };
 
-        // clear_background(WHITE);
-
-        // let centre_x = screen_width() / 2.0;
-        // let centre_y = screen_height() / 2.0;
-
-        // set_camera(&camera);
-
-        // camera space
-        // draw_circle_lines(centre_x - 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
-        // draw_circle_lines(centre_x - 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
-        // draw_circle_lines(centre_x + 60.0, centre_y + 90.0, 40.0, 4.0, BLACK);
-        // draw_circle_lines(centre_x + 60.0, centre_y - 90.0, 40.0, 4.0, BLACK);
-        // draw_circle_lines(-0.15, 0.2, 0.1, 0.01, BLACK);
-        // draw_circle_lines(-0.15, -0.2, 0.1, 0.01, BLACK);
-        // draw_circle_lines(0.15, 0.2, 0.1, 0.01, BLACK);
-        // draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
-
-        // render world entities
-        // TODO: will be handed off to the current gamestate
-        // {
-        //     let guard = world_arena.read().unwrap();
-        //     for (_idx, value) in guard.iter() {
-        //         value.draw();
-        //     }
-        // }
-
-        // set_default_camera();
-        // render HUD entities
-        // TODO: will be handed off to the current gamestate instead
-        // {
-        //     let guard = hud_arena.read().unwrap();
-        //     for (_idx, value) in guard.iter() {
-        //         value.draw();
-        //     }
-        // }
-
-        // draw active state
-        // state_machine.draw().await;
-
-        // camera debug text
-        // {
-        //     let mut debug_lines = global_data.debug_lines.lock().unwrap();
-        //     *debug_lines = vec![
-        //         format!("camera zoom x {:?}", cam_tween_x.get()),
-        //         format!("camera zoom y {:?}", cam_tween_y.get()),
-        //     ];
-        // }
-
-        // move camera
-        // camera.zoom = vec2(cam_tween_x.get(), cam_tween_y.get());
-        // camera.rotation = camera_tween.get();
-
-        // always in main render loop
-        // limit fps
-        let elapsed = last_frame.elapsed();
-        if elapsed < frame_duration {
-            let sleep_duration = frame_duration - elapsed;
-            thread::sleep(sleep_duration);
+        set_default_camera();
+        let debug_data = debug_output.read();
+        if debug_data.show {
+            let fps = get_fps();
+            let delta = get_frame_time();
+            draw_text(&format!("Render FPS {fps}"), 10.0, 20.0, 20.0, BLACK);
+            draw_text(&format!("Render Delta {delta}"), 10.0, 40.0, 20.0, BLACK);
+            draw_text(
+                &format!(
+                    "Update Delta {}/{}",
+                    debug_data.update_delta, debug_data.update_target
+                ),
+                10.0,
+                60.0,
+                20.0,
+                BLACK,
+            );
         }
+
+        // limit fps
+        target_duration
+            .checked_sub(last_frame.elapsed())
+            .map(|remaining| thread::sleep(remaining))
+            .unwrap_or_default();
         last_frame = Instant::now();
 
         next_frame().await

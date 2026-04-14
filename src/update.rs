@@ -4,14 +4,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crossbeam_channel::{Receiver, Sender};
-use macroquad::prelude::{info, state_machine};
-use triple_buffer::{Input, Output};
+use crossbeam_channel::Receiver;
+use macroquad::prelude::info;
+use triple_buffer::Input;
 
 use crate::{
-    GlobalData,
+    DebugData, GlobalData,
     beatmap::Beatmap,
-    entity::{FpsCounter, GridGuides, WorldGuides},
     input::KeyEvent,
     state::{
         main_menu::{MainMenuLogicData, MainMenuRenderData},
@@ -21,12 +20,11 @@ use crate::{
     },
 };
 
-/// Handles events
-/// TODO sync with audio
 pub fn start_update_thread(
     global_data: GlobalData,
     input_rx: Receiver<KeyEvent>,
     render_input: Input<RenderState>,
+    debug_input: &mut Input<DebugData>,
 ) {
     // create FSM
     let mut state_machine = StateMachine::new(
@@ -36,13 +34,21 @@ pub fn start_update_thread(
         render_input,
     );
 
-    let delta = Duration::from_secs_f32(1.0 / 500.0); // 500hz
+    let target = Duration::from_secs_f32(1.0 / 500.0); // 500hz
     let mut last = Instant::now();
+
+    info!("started update thread");
     loop {
         state_machine.update();
 
+        debug_input.write(DebugData {
+            show: true,
+            update_delta: Instant::now().duration_since(last).as_millis(),
+            update_target: target.as_millis(),
+        });
+
         // avoid pinning the cpu
-        delta
+        target
             .checked_sub(last.elapsed())
             .map(|remaining| thread::sleep(remaining))
             .unwrap_or_default();

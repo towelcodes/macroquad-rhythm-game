@@ -1,11 +1,10 @@
 use crossbeam_channel::Receiver;
-use macroquad::prelude::{state_machine::State, *};
+use macroquad::prelude::*;
 use triple_buffer::Input;
 
 use crate::{
     GlobalData,
     input::KeyEvent,
-    state::main_menu::MainMenuRenderData,
     update::{RenderState, StateTransition},
 };
 
