@@ -1,20 +1,20 @@
-use generational_arena::{Arena, Index};
+use arc_swap::ArcSwap;
 use macroquad::miniquad::conf::Platform;
-use macroquad::prelude::*;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex, RwLock};
+use macroquad::ui::widgets::Texture;
+use macroquad::ui::{Skin, StyleBuilder, root_ui};
+use macroquad::{Error, prelude::*};
+use std::cell::LazyCell;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock};
 use std::{
     thread,
     time::{Duration, Instant},
 };
 use triple_buffer::triple_buffer;
 
-use crate::entity::*;
-use crate::input::{KeyEvent, input_loop};
+use crate::input::input_loop;
 use crate::state::*;
-use crate::tween::{Tween, TweenEasing};
 use crate::update::{RenderState, start_update_thread};
 
 #[cfg(test)]
@@ -26,6 +26,7 @@ mod input;
 mod state;
 mod tween;
 mod update;
+mod util;
 
 /*
 main thread has rendering logic
@@ -55,7 +56,7 @@ fn window_conf() -> Conf {
         window_width: 1280,
         window_height: 720,
         platform: Platform {
-            swap_interval: Some(0), // vsync
+            swap_interval: Some(1), // this maybe does something idk
             ..Default::default()
         },
         ..Default::default()
@@ -65,6 +66,16 @@ fn window_conf() -> Conf {
 #[derive(Default)]
 pub struct Data {}
 
+/// Bundle of loaded assets
+pub struct Assets {
+    ui_button_bg: Image,
+}
+
+pub type AssetStore = LazyLock<ArcSwap<Assets>>;
+static ASSETS: AssetStore = LazyLock::new(|| {
+    ArcSwap::from_pointee(load_assets(Path::new("textures")).expect("Failed to load assets"))
+});
+
 #[derive(Debug, Clone, Default)]
 pub struct DebugData {
     show: bool,
@@ -73,6 +84,15 @@ pub struct DebugData {
 }
 
 pub type GlobalData = Arc<Data>;
+
+/// Loads assets from the specified directory
+pub fn load_assets(path: &Path) -> Result<Assets, Error> {
+    info!("Loading assets from {path:?}");
+    let chip = fs::read(path.join("chip.png")).unwrap_or_default();
+    Ok(Assets {
+        ui_button_bg: Image::from_file_with_format(&chip, Some(ImageFormat::Png))?,
+    })
+}
 
 #[macroquad::main(window_conf)]
 async fn main() {
@@ -112,38 +132,35 @@ async fn main() {
     let mut last_frame = Instant::now();
 
     loop {
+        let debug_data = debug_output.read();
+        if debug_data.show {
+            let fps = get_fps();
+            let delta = get_frame_time();
+
+            root_ui().label(None, &format!("Render FPS {fps}"));
+            root_ui().label(None, &format!("Render Delta {delta}"));
+            root_ui().label(
+                None,
+                &format!(
+                    "Update Delta {}/{}",
+                    debug_data.update_delta, debug_data.update_target
+                ),
+            );
+        }
+
         match render_output.read() {
-            RenderState::MainMenu(data) => main_menu::render(data).await,
+            RenderState::MainMenu(data) => main_menu::render(data, &ASSETS).await,
             RenderState::SongSelect(data) => song_select::render(data).await,
             RenderState::Playing(data) => playing::render(data).await,
             RenderState::None => {}
         };
 
-        set_default_camera();
-        let debug_data = debug_output.read();
-        if debug_data.show {
-            let fps = get_fps();
-            let delta = get_frame_time();
-            draw_text(&format!("Render FPS {fps}"), 10.0, 20.0, 20.0, BLACK);
-            draw_text(&format!("Render Delta {delta}"), 10.0, 40.0, 20.0, BLACK);
-            draw_text(
-                &format!(
-                    "Update Delta {}/{}",
-                    debug_data.update_delta, debug_data.update_target
-                ),
-                10.0,
-                60.0,
-                20.0,
-                BLACK,
-            );
-        }
-
         // limit fps
-        target_duration
-            .checked_sub(last_frame.elapsed())
-            .map(|remaining| thread::sleep(remaining))
-            .unwrap_or_default();
-        last_frame = Instant::now();
+        // target_duration
+        //     .checked_sub(last_frame.elapsed())
+        //     .map(|remaining| thread::sleep(remaining))
+        //     .unwrap_or_default();
+        // last_frame = Instant::now();
 
         next_frame().await
     }
