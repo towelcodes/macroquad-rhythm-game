@@ -69,6 +69,7 @@ pub struct Data {}
 /// Bundle of loaded assets
 pub struct Assets {
     ui_button_bg: Image,
+    note: Texture2D,
 }
 
 pub type AssetStore = LazyLock<ArcSwap<Assets>>;
@@ -91,6 +92,7 @@ pub fn load_assets(path: &Path) -> Result<Assets, Error> {
     let chip = fs::read(path.join("chip.png")).unwrap_or_default();
     Ok(Assets {
         ui_button_bg: Image::from_file_with_format(&chip, Some(ImageFormat::Png))?,
+        note: Texture2D::from_file_with_format(&chip, Some(ImageFormat::Png)),
     })
 }
 
@@ -151,7 +153,7 @@ async fn main() {
         match render_output.read() {
             RenderState::MainMenu(data) => main_menu::render(data, &ASSETS).await,
             RenderState::SongSelect(data) => song_select::render(data).await,
-            RenderState::Playing(data) => playing::render(data).await,
+            RenderState::Playing(data) => playing::render(data, &ASSETS).await,
             RenderState::None => {}
         };
 

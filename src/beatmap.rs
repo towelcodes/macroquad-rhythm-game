@@ -22,7 +22,7 @@ pub enum HitObjectType {
 pub struct HitObject {
     pub time: u32, // the time in ms, from the beginning of the song
     pub lane: Lane,
-    pub ttype: HitObjectType, // type is a keyword
+    pub kind: HitObjectType, // type is a keyword
 }
 impl Eq for HitObject {}
 impl PartialOrd for HitObject {
@@ -54,5 +54,5 @@ pub struct Beatmap {
     pub bpm: u32,
     pub beats_per_bar: u8, // will affect where the bar lines are drawn, if enabled
     // pub note_value: f32, // (not implemented) the note value as a fraction, where 1.0 -> 1 beat as specified by the BPM
-    pub hit_objects: BinaryHeap<Reverse<HitObject>>,
+    pub hit_objects: Vec<HitObject>,
 }

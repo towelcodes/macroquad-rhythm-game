@@ -53,18 +53,6 @@ pub fn start_update_thread(
             .map(|remaining| thread::sleep(remaining))
             .unwrap_or_default();
         last = Instant::now();
-
-        // match input_rx.recv_timeout(Duration::from_millis(100)) {
-        //     Ok(event) => match event {
-        //         KeyEvent::Down((keycode, _instant)) => {
-        //             info!("key down: {}", keycode);
-        //         }
-        //         KeyEvent::Up((keycode, _instant)) => {
-        //             info!("key up: {}", keycode);
-        //         }
-        //     },
-        //     Err(_) => {}
-        // };
     }
 }
 
@@ -150,6 +138,8 @@ impl StateMachine {
                     GameState::Playing(playing::init(beatmap))
                 }
             };
+
+            info!("transitioned");
         }
     }
 }

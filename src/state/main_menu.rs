@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::BinaryHeap, time::Duration};
 
 use crossbeam_channel::{Receiver, Sender};
 use macroquad::{
@@ -9,6 +9,7 @@ use triple_buffer::Input;
 
 use crate::{
     AssetStore, Assets, GlobalData,
+    beatmap::{Beatmap, BeatmapMeta, HitObject, HitObjectType, Lane},
     input::KeyEvent,
     tween::{Tween, TweenEasing, TweenState},
     update::{RenderState, StateTransition},
@@ -64,11 +65,41 @@ pub fn update(
     }
 
     // check for ui events
-    data.ui_events.try_iter().for_each(|event| match event {
-        UiEvent::StartBeatmap(id) => {
-            info!("starting beatmap {}", id);
+    for event in data.ui_events.try_iter() {
+        match event {
+            UiEvent::StartBeatmap(id) => {
+                // really this should look through the beatmap database for the one with the corresponding ID
+                // or something
+
+                // temporary
+                let beatmap = Beatmap {
+                    meta: BeatmapMeta {
+                        title: "Exit This Earth's Atmosphere".to_string(),
+                        artist: "Camellia".to_string(),
+                        mapper: "teatowel".to_string(),
+                        level_name: "evil".to_string(),
+                        level: 9.5,
+                    },
+                    bpm: 200,
+                    beats_per_bar: 4,
+                    hit_objects: vec![
+                        HitObject {
+                            time: 1000,
+                            lane: Lane::RightUp,
+                            kind: HitObjectType::Chip,
+                        },
+                        HitObject {
+                            time: 1500,
+                            lane: Lane::RightDown,
+                            kind: HitObjectType::Chip,
+                        },
+                    ],
+                };
+                info!("starting beatmap {}", id);
+                return Some(StateTransition::StartBeatmap(beatmap));
+            }
         }
-    });
+    }
 
     let (x, y) = (data.x.get(), data.y.get());
 
@@ -82,8 +113,6 @@ pub fn update(
 
 pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
     let (ox, oy) = data.offset;
-    let centre_x = screen_width() / 2.;
-    let centre_y = screen_height() / 2.;
 
     let camera = Camera2D {
         zoom: vec2(1., screen_width() / screen_height()),
@@ -99,17 +128,6 @@ pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
     draw_circle_lines(0.15, 0.2, 0.1, 0.01, BLACK);
     draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
 
-    // draw ui elements
-    // let assets_lock = assets.load();
-    // let ui_button_bg = assets_lock.ui_button_bg.clone();
-    // let button_style = root_ui().style_builder().background(ui_button_bg).build();
-
-    // let skin = Skin {
-    //     button_style,
-    //     ..root_ui().default_skin()
-    // };
-    // root_ui().push_skin(&skin);
-
     // set the UI skin
     let label_style = root_ui().style_builder().font_size(24).build();
     let skin = Skin {
@@ -121,6 +139,7 @@ pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
     ui::label((vec2(0.5, 0.4), AnchorPoint::Centre), "Rhythm Game");
 
     if ui::button((vec2(0.5, 0.5), AnchorPoint::Centre), "Start") {
+        trace!("click");
         if let Err(why) = data.ui_events_sender.send(UiEvent::StartBeatmap(0)) {
             warn!("error sending ui event: {why:?}");
         }
