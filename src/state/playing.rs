@@ -59,6 +59,11 @@ pub fn update(
     input_rx: Receiver<KeyEvent>,
     render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
+    // see keys
+    input_rx.try_iter().for_each(|e| {
+        debug!("Received input event: {:?}", e);
+    });
+
     let render_up_to = data.time + data.lane_speed * 50;
 
     // process incoming messages (hits) ---
@@ -106,25 +111,35 @@ pub fn update(
 
 pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
     let render_up_to = data.time + data.lane_speed * 50;
+    let screen_end = render_up_to - data.time;
+
+    clear_background(WHITE);
+    root_ui().label(None, &format!("time: {}", data.time));
+    root_ui().label(
+        None,
+        &format!(
+            "render_up_to={}ms screen_end={}ms lane_speed={}",
+            render_up_to, screen_end, data.lane_speed
+        ),
+    );
 
     let camera = Camera2D {
         zoom: vec2(1., screen_width() / screen_height()),
         ..Default::default()
     };
 
-    clear_background(WHITE);
-    root_ui().label(None, &format!("time: {}", data.time));
-
     set_camera(&camera);
+
+    // render circles
+    draw_circle_lines(-0.8, 0.2, 0.06, 0.005, BLACK);
+    draw_circle_lines(-0.8, -0.2, 0.06, 0.005, BLACK);
+
     for object in &data.active_hit_objects {
         // Calculate the position of the hit object based on its time
-        let screen_end = render_up_to - data.time;
+        let time_offset = object.time as f32 - data.time as f32;
+        let x_offset = (time_offset / screen_end as f32) * 1.8;
 
-        let time_offset = object.time.saturating_sub(data.time) as f32;
-        let screen_end = screen_end.max(1) as f32;
-        let t = (time_offset / screen_end).clamp(0.0, 1.0);
-
-        let x_position = -0.8 + t * (1.0 + 0.8);
+        let x_position = -0.8 + x_offset;
         let y_position = match object.lane {
             Lane::LeftUp => 0.2,
             Lane::RightUp => 0.2,
@@ -133,5 +148,12 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
         };
 
         draw_circle(x_position, y_position, 0.05, BLACK);
+        root_ui().label(
+            None,
+            &format!(
+                "HO: t={} offset={} x={} y={}",
+                object.time, x_offset, x_position, y_position
+            ),
+        )
     }
 }

@@ -4,15 +4,22 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-generational-arena = "0.2.9"
 ron = "0.12.0"
 serde = { version = "1.0.228", features = ["derive"] }
 macroquad = "0.4.14"
 crossbeam-channel = "0.5.15"
 triple_buffer = "9.0.0"
 arc-swap = "1.9.1"
-sdl3 = "0.18.4"
 
 [target.'cfg(target_os="macos")'.dependencies]
 core-foundation = "0.10.1"
 core-graphics2 = "0.4.1"
+
+[target.'cfg(target_os="windows")'.dependencies.windows]
+version = ">=0.59, <=0.62"
+features = [
+    "Data_Xml_Dom",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+]

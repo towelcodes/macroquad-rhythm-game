@@ -21,7 +21,6 @@ use crate::update::{RenderState, start_update_thread};
 mod tests;
 
 mod beatmap;
-mod entity;
 mod input;
 mod state;
 mod tween;

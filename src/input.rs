@@ -7,6 +7,7 @@ use core_graphics2::event::{__CGEventTapProxy, CGEvent, CGEventType};
 
 pub static INPUT_SENDER: OnceLock<Sender<KeyEvent>> = OnceLock::new();
 
+#[derive(Debug)]
 pub enum KeyEvent {
     Down((u64, Instant)),
     Up((u64, Instant)),
@@ -75,6 +76,7 @@ pub fn input_loop(tx: Sender<KeyEvent>) {
     #[cfg(target_os = "windows")]
     {
         info!("starting input loop (winapi)");
+        unsafe {}
         todo!()
     }
 
