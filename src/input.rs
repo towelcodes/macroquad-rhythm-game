@@ -13,6 +13,7 @@ pub enum KeyEvent {
     Up((u64, Instant)),
 }
 
+// FIXME This implementation sends multiple down events when the key is held for a while
 #[cfg(target_os = "macos")]
 fn cg_input_callback<'a>(
     _proxy: *const __CGEventTapProxy,
