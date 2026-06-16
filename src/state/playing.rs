@@ -171,11 +171,42 @@ pub fn update(
     None
 }
 
+/// Calculates the position a note should be on screen
+/// given the current time and lane speed.
+fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32, f32) {
+    // this is the time in future up to which notes should be shown
+    // the end of the screen will show notes at this amount of time in the future (ms)
+    let screen_end = lane_speed * 50;
+
+    // Calculate the position of the hit object based on its time
+    let time_offset = note.time as f32 - time as f32;
+    let x_offset = (time_offset / screen_end as f32) * 1.8;
+
+    let x_position = -0.8 + x_offset;
+    let y_position = match note.lane {
+        Lane::Up => 0.2,
+        Lane::Down => -0.2,
+    };
+
+    // debug text
+    root_ui().label(
+        None,
+        &format!(
+            "HO: t={} offset={} x={} y={}",
+            time, x_offset, x_position, y_position
+        ),
+    );
+
+    (x_position, y_position)
+}
+
 pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
     let render_up_to = data.time + data.lane_speed * 50;
     let screen_end = render_up_to - data.time;
 
     clear_background(WHITE);
+
+    // debug text
     root_ui().label(None, &format!("time: {}", data.time));
     root_ui().label(
         None,
@@ -185,6 +216,7 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
         ),
     );
 
+    // set the camera so we can use relative positions
     let camera = Camera2D {
         zoom: vec2(1., screen_width() / screen_height()),
         ..Default::default()
@@ -205,26 +237,12 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
         draw_circle(-0.8, -0.2, 0.06, Color::new(0., 0., 0., 0.5));
     }
 
+    // render notes
     data.active_hit_objects.each(|objects| {
         for object in objects {
-            // Calculate the position of the hit object based on its time
-            let time_offset = object.time as f32 - data.time as f32;
-            let x_offset = (time_offset / screen_end as f32) * 1.8;
-
-            let x_position = -0.8 + x_offset;
-            let y_position = match object.lane {
-                Lane::Up => 0.2,
-                Lane::Down => -0.2,
-            };
-
+            let (x_position, y_position) =
+                calculate_note_position(object, data.time, data.lane_speed);
             draw_circle(x_position, y_position, 0.05, BLACK);
-            root_ui().label(
-                None,
-                &format!(
-                    "HO: t={} offset={} x={} y={}",
-                    object.time, x_offset, x_position, y_position
-                ),
-            )
         }
     });
 }
