@@ -18,10 +18,8 @@ use crate::{
 
 #[derive(Clone, Default)]
 struct ActiveHitObjects {
-    left_up: VecDeque<HitObject>,
-    right_up: VecDeque<HitObject>,
-    left_down: VecDeque<HitObject>,
-    right_down: VecDeque<HitObject>,
+    up: VecDeque<HitObject>,
+    down: VecDeque<HitObject>,
 }
 impl ActiveHitObjects {
     /// Utility function to run a funciton on each lane
@@ -29,20 +27,16 @@ impl ActiveHitObjects {
     where
         F: Fn(&VecDeque<HitObject>),
     {
-        func(&self.left_up);
-        func(&self.right_up);
-        func(&self.left_down);
-        func(&self.right_down);
+        func(&self.up);
+        func(&self.down);
     }
 
     fn each_mut<F>(&mut self, func: F)
     where
         F: Fn(&mut VecDeque<HitObject>),
     {
-        func(&mut self.left_up);
-        func(&mut self.right_up);
-        func(&mut self.left_down);
-        func(&mut self.right_down);
+        func(&mut self.up);
+        func(&mut self.down);
     }
 }
 
@@ -50,7 +44,6 @@ pub struct PlayingLogicData {
     beatmap: Beatmap,
     remaining_hit_objects: BinaryHeap<Reverse<HitObject>>,
     active_hit_objects: ActiveHitObjects,
-    render_hit_objects: ActiveHitObjects,
     time: u32,
     last_update: Instant,
     bpm: u32,
@@ -77,7 +70,6 @@ pub fn init(beatmap: Beatmap) -> PlayingLogicData {
         beatmap,
         remaining_hit_objects,
         active_hit_objects: ActiveHitObjects::default(),
-        render_hit_objects: ActiveHitObjects::default(),
         time: 0,
         last_update: Instant::now(),
         bpm,
@@ -131,24 +123,14 @@ pub fn update(
         if let Some(next) = data.remaining_hit_objects.peek() {
             if next.0.time <= render_up_to {
                 match next.0.lane {
-                    Lane::LeftUp => {
+                    Lane::Up => {
                         data.active_hit_objects
-                            .left_up
+                            .up
                             .push_back(data.remaining_hit_objects.pop().unwrap().0);
                     }
-                    Lane::RightUp => {
+                    Lane::Down => {
                         data.active_hit_objects
-                            .right_up
-                            .push_back(data.remaining_hit_objects.pop().unwrap().0);
-                    }
-                    Lane::LeftDown => {
-                        data.active_hit_objects
-                            .left_down
-                            .push_back(data.remaining_hit_objects.pop().unwrap().0);
-                    }
-                    Lane::RightDown => {
-                        data.active_hit_objects
-                            .right_down
+                            .down
                             .push_back(data.remaining_hit_objects.pop().unwrap().0);
                     }
                 }
@@ -178,18 +160,31 @@ pub fn update(
     }
 
     // swap the working state to the buffer to be pushed to render
-    mem::swap(&mut data.active_hit_objects, &mut data.render_hit_objects);
+    // mem::swap(&mut data.active_hit_objects, &mut data.render_hit_objects);
 
     'update_render: {
         let render_state = render_input.input_buffer_mut();
         let RenderState::Playing(render_data) = render_state else {
             // render state has not been initialised; copy everything this time only
             trace!("initialising render state to playing");
+            render_input.write(RenderState::Playing(PlayingRenderData {
+                active_hit_objects: data.active_hit_objects.clone(),
+                time: data.time,
+                bpm: data.bpm,
+                lane_speed: data.lane_speed,
+                keys_down: (true, false),
+                score: 100000,
+                accuracy: 98.5,
+            }));
             break 'update_render;
         };
-        mem::swap(
+
+        // insert latest hit object data
+
+        // FIXME: this has poor performance as the whole set of active hit objects is cloned every update
+        let _ = mem::replace(
             &mut render_data.active_hit_objects,
-            &mut data.render_hit_objects,
+            data.active_hit_objects.clone(),
         );
         render_data.time = data.time;
         render_data.bpm = data.bpm;
@@ -253,10 +248,8 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
 
             let x_position = -0.8 + x_offset;
             let y_position = match object.lane {
-                Lane::LeftUp => 0.2,
-                Lane::RightUp => 0.2,
-                Lane::LeftDown => -0.2,
-                Lane::RightDown => -0.2,
+                Lane::Up => 0.2,
+                Lane::Down => -0.2,
             };
 
             draw_circle(x_position, y_position, 0.05, BLACK);

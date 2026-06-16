@@ -5,10 +5,8 @@ use std::collections::{BinaryHeap, LinkedList};
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
 pub enum Lane {
-    LeftUp,
-    LeftDown,
-    RightUp,
-    RightDown,
+    Up,
+    Down,
 }
 
 #[repr(u8)]

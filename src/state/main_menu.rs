@@ -85,12 +85,12 @@ pub fn update(
                     hit_objects: vec![
                         HitObject {
                             time: 1000,
-                            lane: Lane::RightUp,
+                            lane: Lane::Up,
                             kind: HitObjectType::Chip,
                         },
                         HitObject {
                             time: 1500,
-                            lane: Lane::RightDown,
+                            lane: Lane::Down,
                             kind: HitObjectType::Chip,
                         },
                     ],
