@@ -16,6 +16,9 @@ use crate::{
     update::{RenderState, StateTransition},
 };
 
+// This represents the relative width of a note circle
+const NOTE_WIDTH: f32 = 0.06;
+
 #[derive(Clone, Default)]
 struct ActiveHitObjects {
     up: VecDeque<HitObject>,
@@ -81,6 +84,12 @@ pub fn close(data: &PlayingLogicData) {
     debug!("Closing Playing state");
 }
 
+/// Returns true if the given note should be removed from the active notes queue.
+fn should_pop_note(note: &HitObject, time: u32, lane_speed: u32) -> bool {
+    // FIXME: Should calculate it properly here instead of using another function
+    calculate_note_position(note, time, lane_speed).0 < (-1.0 - NOTE_WIDTH)
+}
+
 pub fn update(
     data: &mut PlayingLogicData,
     global_data: GlobalData,
@@ -143,7 +152,7 @@ pub fn update(
     data.active_hit_objects.each_mut(|objects| {
         loop {
             if let Some(last) = objects.front() {
-                if last.time + data.lane_speed * 50 < data.time {
+                if should_pop_note(last, data.time, data.lane_speed) {
                     objects.pop_front();
                     continue;
                 }
@@ -159,6 +168,7 @@ pub fn update(
         data.last_update = now;
     }
 
+    // FIXME: this has poor performance as the active_hit_objects vecs are cloned each update
     render_input.write(RenderState::Playing(PlayingRenderData {
         active_hit_objects: data.active_hit_objects.clone(),
         time: data.time,
@@ -187,15 +197,6 @@ fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32
         Lane::Up => 0.2,
         Lane::Down => -0.2,
     };
-
-    // debug text
-    root_ui().label(
-        None,
-        &format!(
-            "HO: t={} offset={} x={} y={}",
-            time, x_offset, x_position, y_position
-        ),
-    );
 
     (x_position, y_position)
 }
@@ -227,14 +228,14 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
     // render score TODO
 
     // render circles
-    draw_circle_lines(-0.8, 0.2, 0.06, 0.005, BLACK);
-    draw_circle_lines(-0.8, -0.2, 0.06, 0.005, BLACK);
+    draw_circle_lines(-0.8, 0.2, NOTE_WIDTH, 0.005, BLACK);
+    draw_circle_lines(-0.8, -0.2, NOTE_WIDTH, 0.005, BLACK);
 
     if data.keys_down.0 {
-        draw_circle(-0.8, 0.2, 0.06, Color::new(0., 0., 0., 0.5));
+        draw_circle(-0.8, 0.2, NOTE_WIDTH, Color::new(0., 0., 0., 0.5));
     }
     if data.keys_down.1 {
-        draw_circle(-0.8, -0.2, 0.06, Color::new(0., 0., 0., 0.5));
+        draw_circle(-0.8, -0.2, NOTE_WIDTH, Color::new(0., 0., 0., 0.5));
     }
 
     // render notes
@@ -243,6 +244,12 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
             let (x_position, y_position) =
                 calculate_note_position(object, data.time, data.lane_speed);
             draw_circle(x_position, y_position, 0.05, BLACK);
+
+            // debug text
+            root_ui().label(
+                None,
+                &format!("HO: t={} x={} y={}", data.time, x_position, y_position),
+            );
         }
     });
 }
