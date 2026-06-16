@@ -159,50 +159,15 @@ pub fn update(
         data.last_update = now;
     }
 
-    // swap the working state to the buffer to be pushed to render
-    // mem::swap(&mut data.active_hit_objects, &mut data.render_hit_objects);
-
-    'update_render: {
-        let render_state = render_input.input_buffer_mut();
-        let RenderState::Playing(render_data) = render_state else {
-            // render state has not been initialised; copy everything this time only
-            trace!("initialising render state to playing");
-            render_input.write(RenderState::Playing(PlayingRenderData {
-                active_hit_objects: data.active_hit_objects.clone(),
-                time: data.time,
-                bpm: data.bpm,
-                lane_speed: data.lane_speed,
-                keys_down: (true, false),
-                score: 100000,
-                accuracy: 98.5,
-            }));
-            break 'update_render;
-        };
-
-        // insert latest hit object data
-
-        // FIXME: this has poor performance as the whole set of active hit objects is cloned every update
-        let _ = mem::replace(
-            &mut render_data.active_hit_objects,
-            data.active_hit_objects.clone(),
-        );
-        render_data.time = data.time;
-        render_data.bpm = data.bpm;
-        render_data.lane_speed = data.lane_speed;
-        render_data.keys_down = (true, false);
-        render_data.score = 100000;
-        render_data.accuracy = 98.5;
-    }
-
-    // render_input.write(RenderState::Playing(PlayingRenderData {
-    //     active_hit_objects: data.active_hit_objects,
-    //     time: data.time,
-    //     bpm: data.bpm,
-    //     lane_speed: data.lane_speed,
-    //     keys_down: (true, false),
-    //     score: 100000,
-    //     accuracy: 98.5,
-    // }));
+    render_input.write(RenderState::Playing(PlayingRenderData {
+        active_hit_objects: data.active_hit_objects.clone(),
+        time: data.time,
+        bpm: data.bpm,
+        lane_speed: data.lane_speed,
+        keys_down: (true, false),
+        score: 100000,
+        accuracy: 98.5,
+    }));
     None
 }
 
