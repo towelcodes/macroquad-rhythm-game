@@ -19,6 +19,24 @@ use crate::{
 // This represents the relative width of a note circle
 const NOTE_WIDTH: f32 = 0.06;
 
+// The input timings for each judgement window
+const PERFECT: u32 = 60;
+const GREAT: u32 = 90;
+const OK: u32 = 120;
+const BAD: u32 = 150;
+const MISS: u32 = 200;
+
+/// An enum representing a note judgement.
+/// The number is the positive or negative error in ms
+#[derive(Debug)]
+pub enum Judgement {
+    Perfect(i32),
+    Great(i32),
+    Ok(i32),
+    Bad(i32),
+    Miss(i32),
+}
+
 #[derive(Clone, Default)]
 struct ActiveHitObjects {
     up: VecDeque<HitObject>,
@@ -51,6 +69,7 @@ pub struct PlayingLogicData {
     last_update: Instant,
     bpm: u32,
     lane_speed: u32,
+    start: Option<Instant>, // If the song has started, this is a timestamp of the start time
 }
 
 #[derive(Clone)]
@@ -64,11 +83,15 @@ pub struct PlayingRenderData {
     accuracy: f32,
 }
 
-pub fn init(beatmap: Beatmap) -> PlayingLogicData {
+pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData {
     debug!("Init Playing state with beatmap {:?}", beatmap);
     let remaining_hit_objects =
         BinaryHeap::from_iter(beatmap.hit_objects.iter().cloned().map(Reverse));
     let bpm = beatmap.bpm;
+
+    // Clear the input queue to prepare
+    input_rx.try_iter().for_each(|_| {});
+
     PlayingLogicData {
         beatmap,
         remaining_hit_objects,
@@ -77,6 +100,7 @@ pub fn init(beatmap: Beatmap) -> PlayingLogicData {
         last_update: Instant::now(),
         bpm,
         lane_speed: 20,
+        start: Some(Instant::now()),
     }
 }
 
@@ -85,9 +109,53 @@ pub fn close(data: &PlayingLogicData) {
 }
 
 /// Returns true if the given note should be removed from the active notes queue.
-fn should_pop_note(note: &HitObject, time: u32, lane_speed: u32) -> bool {
+/// If the note should be popped, a Judgement is returned.
+fn should_pop_note(note: &HitObject, time: u32, lane_speed: u32) -> Option<Judgement> {
     // FIXME: Should calculate it properly here instead of using another function
-    calculate_note_position(note, time, lane_speed).0 < (-1.0 - NOTE_WIDTH)
+    if calculate_note_position(note, time, lane_speed).0 < (-1.0 - NOTE_WIDTH) {
+        Some(Judgement::Miss(-(MISS as i32)))
+    } else {
+        None
+    }
+}
+
+/// Checks if a note has been hit, and if it has, pops it and returns the judgement
+fn hit_note(
+    lane_queue: &mut VecDeque<HitObject>,
+    input_time: Instant,
+    start: Instant,
+) -> Option<Judgement> {
+    // check for a nearby hit object
+    let Some(next) = lane_queue.front() else {
+        debug!("nothing at the front of the queue, skipping");
+        return None;
+    };
+
+    debug!(
+        "note time={:?} relative time={:?} input time={:?} start={:?}",
+        next.time,
+        (input_time - start).as_millis(),
+        input_time,
+        start
+    );
+    let difference = next.time as i32 - (input_time - start).as_millis() as i32; // +ve means early, -ve means late
+
+    // pop the note (if required) and return the judgement
+    if difference.abs() as u32 <= PERFECT {
+        let _ = lane_queue.pop_front();
+        Some(Judgement::Perfect(difference))
+    } else if difference.abs() as u32 <= GREAT {
+        let _ = lane_queue.pop_front();
+        Some(Judgement::Great(difference))
+    } else if difference.abs() as u32 <= OK {
+        let _ = lane_queue.pop_front();
+        Some(Judgement::Ok(difference))
+    } else if difference.abs() as u32 <= BAD {
+        let _ = lane_queue.pop_front();
+        Some(Judgement::Bad(difference))
+    } else {
+        None
+    }
 }
 
 pub fn update(
@@ -100,27 +168,33 @@ pub fn update(
 
     // process incoming messages (hits) ---
     input_rx.try_iter().for_each(|e| {
-        debug!("Received input event: {:?}", e);
-        // match e {
-        //     KeyEvent::Down((char, instant)) => {
-        //         // TODO: make the buttons configurable
-        //         match char {
-        //             7 | 8 => {
-        //                 // top lane
-        //                 // check for a nearby hit object
-        //                 let threshold = 100u32; // ms
-        //                 let object = data.active_hit_objects.iter().find(|obj| {
-        //                     (obj.lane == Lane::LeftUp || obj.lane == Lane::RightUp)
-        //                         && obj.time.abs_diff(data.time) < threshold
-        //                 });
-        //             }
-        //             44 | 47 => { // bottom lane
-        //             }
-        //             _ => {}
-        //         }
-        //     }
-        //     _ => {}
-        // }
+        match e {
+            KeyEvent::Down((char, instant)) => {
+                debug!("Received input event: {:?}", e);
+                // TODO: make the buttons configurable
+                let judgement = match char {
+                    7 | 8 => {
+                        // top lane
+                        hit_note(
+                            &mut data.active_hit_objects.up,
+                            instant,
+                            data.start.unwrap(),
+                        )
+                    }
+                    44 | 47 => {
+                        // bottom lane
+                        hit_note(
+                            &mut data.active_hit_objects.down,
+                            instant,
+                            data.start.unwrap(),
+                        )
+                    }
+                    _ => None,
+                };
+                debug!("Note judgement: {:?}", judgement);
+            }
+            _ => {}
+        }
     });
     // remove them from the heap
 
@@ -152,7 +226,8 @@ pub fn update(
     data.active_hit_objects.each_mut(|objects| {
         loop {
             if let Some(last) = objects.front() {
-                if should_pop_note(last, data.time, data.lane_speed) {
+                if let Some(judgement) = should_pop_note(last, data.time, data.lane_speed) {
+                    debug!("popping note: {:?}", judgement);
                     objects.pop_front();
                     continue;
                 }

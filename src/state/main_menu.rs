@@ -72,6 +72,14 @@ pub fn update(
                 // or something
 
                 // temporary
+                let mut hit_objects: Vec<HitObject> = vec![];
+                for i in 0..100 {
+                    hit_objects.push(HitObject {
+                        time: i * 500,
+                        lane: if i % 2 == 0 { Lane::Up } else { Lane::Down },
+                        kind: HitObjectType::Chip,
+                    });
+                }
                 let beatmap = Beatmap {
                     meta: BeatmapMeta {
                         title: "Exit This Earth's Atmosphere".to_string(),
@@ -82,18 +90,7 @@ pub fn update(
                     },
                     bpm: 200,
                     beats_per_bar: 4,
-                    hit_objects: vec![
-                        HitObject {
-                            time: 1000,
-                            lane: Lane::Up,
-                            kind: HitObjectType::Chip,
-                        },
-                        HitObject {
-                            time: 1500,
-                            lane: Lane::Down,
-                            kind: HitObjectType::Chip,
-                        },
-                    ],
+                    hit_objects,
                 };
                 info!("starting beatmap {}", id);
                 return Some(StateTransition::StartBeatmap(beatmap));

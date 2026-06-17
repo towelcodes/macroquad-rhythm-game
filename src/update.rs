@@ -135,7 +135,7 @@ impl StateMachine {
                 StateTransition::MainMenu => GameState::MainMenu(main_menu::init()),
                 StateTransition::SongSelect => GameState::SongSelect(song_select::init()),
                 StateTransition::StartBeatmap(beatmap) => {
-                    GameState::Playing(playing::init(beatmap))
+                    GameState::Playing(playing::init(beatmap, self.input_rx.clone()))
                 }
             };
 
