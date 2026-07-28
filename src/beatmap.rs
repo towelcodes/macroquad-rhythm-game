@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, LinkedList};
+use std::collections::BinaryHeap;
 
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
@@ -25,12 +25,12 @@ pub struct HitObject {
 impl Eq for HitObject {}
 impl PartialOrd for HitObject {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.cmp(&self))
+        Some(self.cmp(&other))
     }
 }
 impl Ord for HitObject {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        other.time.cmp(&self.time)
+        self.time.cmp(&other.time)
     }
 }
 

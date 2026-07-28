@@ -1,7 +1,6 @@
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, VecDeque},
-    mem,
     time::Instant,
 };
 
@@ -65,11 +64,9 @@ pub struct PlayingLogicData {
     beatmap: Beatmap,
     remaining_hit_objects: BinaryHeap<Reverse<HitObject>>,
     active_hit_objects: ActiveHitObjects,
-    time: u32,
-    last_update: Instant,
     bpm: u32,
     lane_speed: u32,
-    start: Option<Instant>, // If the song has started, this is a timestamp of the start time
+    start: Instant, // Timestamp of when the song started
 }
 
 #[derive(Clone)]
@@ -96,11 +93,9 @@ pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData 
         beatmap,
         remaining_hit_objects,
         active_hit_objects: ActiveHitObjects::default(),
-        time: 0,
-        last_update: Instant::now(),
         bpm,
         lane_speed: 20,
-        start: Some(Instant::now()),
+        start: Instant::now(),
     }
 }
 
@@ -131,14 +126,16 @@ fn hit_note(
         return None;
     };
 
+    let difference = next.time as i32 - (input_time - start).as_millis() as i32; // +ve means early, -ve means late
+
     debug!(
-        "note time={:?} relative time={:?} input time={:?} start={:?}",
+        "difference={:?} note_time={:?} relative_time={:?} input_time={:?} start={:?}",
+        difference,
         next.time,
         (input_time - start).as_millis(),
         input_time,
         start
     );
-    let difference = next.time as i32 - (input_time - start).as_millis() as i32; // +ve means early, -ve means late
 
     // pop the note (if required) and return the judgement
     if difference.abs() as u32 <= PERFECT {
@@ -164,7 +161,8 @@ pub fn update(
     input_rx: Receiver<KeyEvent>,
     render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
-    let render_up_to = data.time + data.lane_speed * 50;
+    let time = data.start.elapsed().as_millis() as u32;
+    let render_up_to = time + data.lane_speed * 50;
 
     // process incoming messages (hits) ---
     input_rx.try_iter().for_each(|e| {
@@ -175,19 +173,11 @@ pub fn update(
                 let judgement = match char {
                     7 | 8 => {
                         // top lane
-                        hit_note(
-                            &mut data.active_hit_objects.up,
-                            instant,
-                            data.start.unwrap(),
-                        )
+                        hit_note(&mut data.active_hit_objects.up, instant, data.start)
                     }
-                    44 | 47 => {
+                    43 | 47 => {
                         // bottom lane
-                        hit_note(
-                            &mut data.active_hit_objects.down,
-                            instant,
-                            data.start.unwrap(),
-                        )
+                        hit_note(&mut data.active_hit_objects.down, instant, data.start)
                     }
                     _ => None,
                 };
@@ -196,9 +186,8 @@ pub fn update(
             _ => {}
         }
     });
-    // remove them from the heap
 
-    // render score
+    // TODO: render score
 
     // hit objects ---
     // - peek the next hit element and check if it is in range
@@ -226,7 +215,7 @@ pub fn update(
     data.active_hit_objects.each_mut(|objects| {
         loop {
             if let Some(last) = objects.front() {
-                if let Some(judgement) = should_pop_note(last, data.time, data.lane_speed) {
+                if let Some(judgement) = should_pop_note(last, time, data.lane_speed) {
                     debug!("popping note: {:?}", judgement);
                     objects.pop_front();
                     continue;
@@ -236,17 +225,10 @@ pub fn update(
         }
     });
 
-    // increment time
-    let now = Instant::now();
-    if let Some(elapsed) = now.checked_duration_since(data.last_update) {
-        data.time += elapsed.as_millis() as u32;
-        data.last_update = now;
-    }
-
     // FIXME: this has poor performance as the active_hit_objects vecs are cloned each update
     render_input.write(RenderState::Playing(PlayingRenderData {
         active_hit_objects: data.active_hit_objects.clone(),
-        time: data.time,
+        time,
         bpm: data.bpm,
         lane_speed: data.lane_speed,
         keys_down: (true, false),
@@ -269,8 +251,8 @@ fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32
 
     let x_position = -0.8 + x_offset;
     let y_position = match note.lane {
-        Lane::Up => 0.2,
-        Lane::Down => -0.2,
+        Lane::Up => -0.2,
+        Lane::Down => 0.2,
     };
 
     (x_position, y_position)
