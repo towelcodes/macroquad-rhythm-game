@@ -17,7 +17,7 @@ use crate::{
 };
 
 enum UiEvent {
-    StartBeatmap(u32),
+    StartBeatmap,
 }
 
 pub struct MainMenuLogicData {
@@ -67,7 +67,7 @@ pub fn update(
     // check for ui events
     for event in data.ui_events.try_iter() {
         match event {
-            UiEvent::StartBeatmap(id) => {
+            UiEvent::StartBeatmap => {
                 // really this should look through the beatmap database for the one with the corresponding ID
                 // or something
 
@@ -92,7 +92,7 @@ pub fn update(
                     beats_per_bar: 4,
                     hit_objects,
                 };
-                info!("starting beatmap {}", id);
+                info!("starting beatmap");
                 return Some(StateTransition::StartBeatmap(beatmap));
             }
         }
