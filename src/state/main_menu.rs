@@ -137,7 +137,7 @@ pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
 
     if ui::button((vec2(0.5, 0.5), AnchorPoint::Centre), "Start") {
         trace!("click");
-        if let Err(why) = data.ui_events_sender.send(UiEvent::StartBeatmap(0)) {
+        if let Err(why) = data.ui_events_sender.send(UiEvent::StartBeatmap) {
             warn!("error sending ui event: {why:?}");
         }
     }

@@ -155,6 +155,10 @@ fn hit_note(
     }
 }
 
+fn render_up_to(lane_speed: u32, time: u32) -> u32 {
+    time + lane_speed * 50
+}
+
 pub fn update(
     data: &mut PlayingLogicData,
     global_data: GlobalData,
@@ -162,7 +166,7 @@ pub fn update(
     render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
     let time = data.start.elapsed().as_millis() as u32;
-    let render_up_to = time + data.lane_speed * 50;
+    let render_up_to = render_up_to(data.lane_speed, time);
 
     // process incoming messages (hits) ---
     input_rx.try_iter().for_each(|e| {
@@ -187,7 +191,7 @@ pub fn update(
         }
     });
 
-    // TODO: render score
+    // TODO: update score
 
     // hit objects ---
     // - peek the next hit element and check if it is in range
@@ -243,7 +247,7 @@ pub fn update(
 fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32, f32) {
     // this is the time in future up to which notes should be shown
     // the end of the screen will show notes at this amount of time in the future (ms)
-    let screen_end = lane_speed * 50;
+    let screen_end = render_up_to(lane_speed, time) - time;
 
     // Calculate the position of the hit object based on its time
     let time_offset = note.time as f32 - time as f32;
@@ -259,7 +263,7 @@ fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32
 }
 
 pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
-    let render_up_to = data.time + data.lane_speed * 50;
+    let render_up_to = render_up_to(data.lane_speed, data.time);
     let screen_end = render_up_to - data.time;
 
     clear_background(WHITE);
