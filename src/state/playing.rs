@@ -1,10 +1,17 @@
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, VecDeque},
+    error::Error,
+    path::Path,
     time::Instant,
 };
 
 use crossbeam_channel::Receiver;
+use kira::{
+    AudioManager, AudioManagerSettings, DefaultBackend,
+    backend::cpal::CpalBackend,
+    sound::static_sound::{StaticSoundData, StaticSoundHandle},
+};
 use macroquad::{prelude::*, ui::root_ui};
 use triple_buffer::Input;
 
@@ -66,6 +73,7 @@ pub struct PlayingLogicData {
     active_hit_objects: ActiveHitObjects,
     bpm: u32,
     lane_speed: u32,
+    audio_clock: AudioClock,
     start: Instant, // Timestamp of when the song started
 }
 
@@ -80,6 +88,29 @@ pub struct PlayingRenderData {
     accuracy: f32,
 }
 
+pub struct AudioClock {
+    manager: AudioManager,
+    sound: StaticSoundHandle,
+    offset_ms: i32,
+}
+
+impl AudioClock {
+    pub fn new(audio_path: &Path, offset_ms: i32) -> Result<Self, Box<dyn Error>> {
+        let mut manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())?;
+        let sound_data = StaticSoundData::from_file(audio_path)?;
+        let sound = manager.play(sound_data)?;
+        Ok(Self {
+            manager,
+            sound,
+            offset_ms,
+        })
+    }
+
+    pub fn time_ms(&self) -> u32 {
+        (self.sound.position() * 1000.0 + self.offset_ms as f64).max(0.0) as u32
+    }
+}
+
 pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData {
     debug!("Init Playing state with beatmap {:?}", beatmap);
     let remaining_hit_objects =
@@ -89,7 +120,12 @@ pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData 
     // Clear the input queue to prepare
     input_rx.try_iter().for_each(|_| {});
 
+    // start the audio
+    let audio_clock =
+        AudioClock::new(beatmap.audio_path.as_ref(), 0).expect("audio failed to start!");
+
     PlayingLogicData {
+        audio_clock,
         beatmap,
         remaining_hit_objects,
         active_hit_objects: ActiveHitObjects::default(),
@@ -165,7 +201,7 @@ pub fn update(
     input_rx: Receiver<KeyEvent>,
     render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
-    let time = data.start.elapsed().as_millis() as u32;
+    let time = data.audio_clock.time_ms();
     let render_up_to = render_up_to(data.lane_speed, time);
 
     // process incoming messages (hits) ---

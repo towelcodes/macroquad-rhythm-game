@@ -10,6 +10,7 @@ macroquad = "0.4.14"
 crossbeam-channel = "0.5.15"
 triple_buffer = "9.0.0"
 arc-swap = "1.9.1"
+kira = "0.12.2"
 
 [target.'cfg(target_os="macos")'.dependencies]
 core-foundation = "0.10.1"
@@ -23,3 +24,30 @@ features = [
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ]
+
+[profile.dev.package.kira]
+opt-level = 3
+
+[profile.dev.package.cpal]
+opt-level = 3
+
+[profile.dev.package.symphonia]
+opt-level = 3
+
+[profile.dev.package.symphonia-bundle-mp3]
+opt-level = 3
+
+[profile.dev.package.symphonia-format-ogg]
+opt-level = 3
+
+[profile.dev.package.symphonia-codec-vorbis]
+opt-level = 3
+
+[profile.dev.package.symphonia-bundle-flac]
+opt-level = 3
+
+[profile.dev.package.symphonia-format-wav]
+opt-level = 3
+
+[profile.dev.package.symphonia-codec-pcm]
+opt-level = 3

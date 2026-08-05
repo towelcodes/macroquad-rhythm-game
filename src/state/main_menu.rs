@@ -90,6 +90,7 @@ pub fn update(
                     },
                     bpm: 200,
                     beats_per_bar: 4,
+                    audio_path: "music.wav".to_owned(),
                     hit_objects,
                 };
                 info!("starting beatmap");
