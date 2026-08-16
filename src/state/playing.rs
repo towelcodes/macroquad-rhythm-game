@@ -9,7 +9,6 @@ use std::{
 use crossbeam_channel::Receiver;
 use kira::{
     AudioManager, AudioManagerSettings, DefaultBackend,
-    backend::cpal::CpalBackend,
     sound::static_sound::{StaticSoundData, StaticSoundHandle},
 };
 use macroquad::{prelude::*, ui::root_ui};
@@ -21,6 +20,9 @@ use crate::{
     input::KeyEvent,
     update::{RenderState, StateTransition},
 };
+
+// How long in ms judgements should show on the screen
+const JUDGEMENT_DISPLAY_TIME: u32 = 600;
 
 // This represents the relative width of a note circle
 const NOTE_WIDTH: f32 = 0.06;
@@ -34,7 +36,7 @@ const MISS: u32 = 200;
 
 /// An enum representing a note judgement.
 /// The number is the positive or negative error in ms
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Judgement {
     Perfect(i32),
     Great(i32),
@@ -52,18 +54,42 @@ impl ActiveHitObjects {
     /// Utility function to run a funciton on each lane
     fn each<F>(&self, func: F)
     where
-        F: Fn(&VecDeque<HitObject>),
+        F: Fn(&VecDeque<HitObject>, Lane),
     {
-        func(&self.up);
-        func(&self.down);
+        func(&self.up, Lane::Up);
+        func(&self.down, Lane::Down);
+    }
+
+    fn each_mut<F>(&mut self, mut func: F)
+    where
+        F: FnMut(&mut VecDeque<HitObject>, Lane),
+    {
+        func(&mut self.up, Lane::Up);
+        func(&mut self.down, Lane::Down);
+    }
+}
+
+#[derive(Clone, Default)]
+struct ActiveJudgements {
+    up: VecDeque<(Judgement, u32)>,
+    down: VecDeque<(Judgement, u32)>,
+}
+impl ActiveJudgements {
+    /// Utility function to run a funciton on each lane
+    fn each<F>(&self, func: F)
+    where
+        F: Fn(&VecDeque<(Judgement, u32)>, Lane),
+    {
+        func(&self.up, Lane::Up);
+        func(&self.down, Lane::Down);
     }
 
     fn each_mut<F>(&mut self, func: F)
     where
-        F: Fn(&mut VecDeque<HitObject>),
+        F: Fn(&mut VecDeque<(Judgement, u32)>, Lane),
     {
-        func(&mut self.up);
-        func(&mut self.down);
+        func(&mut self.up, Lane::Up);
+        func(&mut self.down, Lane::Down);
     }
 }
 
@@ -71,6 +97,8 @@ pub struct PlayingLogicData {
     beatmap: Beatmap,
     remaining_hit_objects: BinaryHeap<Reverse<HitObject>>,
     active_hit_objects: ActiveHitObjects,
+    judgements: Vec<(Judgement, u32)>, // judgements are stored with the timestamp they were taken
+    active_judgements: ActiveJudgements, // active judgements are the judgements that will be shown on the screen
     bpm: u32,
     lane_speed: u32,
     audio_clock: AudioClock,
@@ -80,6 +108,7 @@ pub struct PlayingLogicData {
 #[derive(Clone)]
 pub struct PlayingRenderData {
     active_hit_objects: ActiveHitObjects,
+    active_judgements: ActiveJudgements,
     time: u32,
     bpm: u32,
     lane_speed: u32,
@@ -129,9 +158,11 @@ pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData 
         beatmap,
         remaining_hit_objects,
         active_hit_objects: ActiveHitObjects::default(),
+        active_judgements: ActiveJudgements::default(),
         bpm,
         lane_speed: 20,
         start: Instant::now(),
+        judgements: vec![],
     }
 }
 
@@ -210,20 +241,42 @@ pub fn update(
             KeyEvent::Down((char, instant)) => {
                 debug!("Received input event: {:?}", e);
                 // TODO: make the buttons configurable
+
+                // top lane
                 let judgement = match char {
-                    7 | 8 => {
-                        // top lane
-                        hit_note(&mut data.active_hit_objects.up, instant, data.start)
-                    }
-                    43 | 47 => {
-                        // bottom lane
-                        hit_note(&mut data.active_hit_objects.down, instant, data.start)
-                    }
+                    7 | 8 => hit_note(&mut data.active_hit_objects.up, instant, data.start),
                     _ => None,
                 };
-                debug!("Note judgement: {:?}", judgement);
+                if let Some(judgement) = judgement {
+                    debug!("Note judgement: {:?}", judgement);
+                    data.judgements.push((judgement.clone(), time));
+                    data.active_judgements.up.push_back((judgement, time));
+                    return;
+                }
+
+                // bottom lane
+                let judgement = match char {
+                    43 | 47 => hit_note(&mut data.active_hit_objects.down, instant, data.start),
+                    _ => None,
+                };
+                if let Some(judgement) = judgement {
+                    debug!("Note judgement: {:?}", judgement);
+                    data.judgements.push((judgement.clone(), time));
+                    data.active_judgements.down.push_back((judgement, time));
+                }
             }
             _ => {}
+        }
+    });
+
+    // check for expired judgements
+    data.active_judgements.each_mut(|queue, _| {
+        while let Some((_, created)) = queue.front() {
+            if time.saturating_sub(*created) > JUDGEMENT_DISPLAY_TIME {
+                queue.pop_front();
+            } else {
+                break;
+            }
         }
     });
 
@@ -252,12 +305,20 @@ pub fn update(
         break;
     }
     // - remove old hit objects
-    data.active_hit_objects.each_mut(|objects| {
+    data.active_hit_objects.each_mut(|objects, lane| {
         loop {
             if let Some(last) = objects.front() {
                 if let Some(judgement) = should_pop_note(last, time, data.lane_speed) {
                     debug!("popping note: {:?}", judgement);
                     objects.pop_front();
+                    match lane {
+                        Lane::Up => {
+                            data.active_judgements.up.push_back((judgement, time));
+                        }
+                        Lane::Down => {
+                            data.active_judgements.down.push_back((judgement, time));
+                        }
+                    }
                     continue;
                 }
             }
@@ -268,6 +329,7 @@ pub fn update(
     // FIXME: this has poor performance as the active_hit_objects vecs are cloned each update
     render_input.write(RenderState::Playing(PlayingRenderData {
         active_hit_objects: data.active_hit_objects.clone(),
+        active_judgements: data.active_judgements.clone(),
         time,
         bpm: data.bpm,
         lane_speed: data.lane_speed,
@@ -296,6 +358,45 @@ fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32
     };
 
     (x_position, y_position)
+}
+
+/// Draws a judgement on the screen, given the time it was created and the lane
+fn draw_judgement(judgement: &Judgement, lane: Lane, created: u32, time: u32) {
+    let age = time.saturating_sub(created);
+    let alpha = 1.0 - (age as f32 / JUDGEMENT_DISPLAY_TIME as f32);
+
+    let (text, colour) = match judgement {
+        Judgement::Perfect(_) => ("Perfect", Color::from_hex(0x74c7ec).with_alpha(alpha)),
+        Judgement::Great(_) => ("Great", Color::from_hex(0xa6e3a1).with_alpha(alpha)),
+        Judgement::Ok(_) => ("Ok", Color::from_hex(0xf9e2af).with_alpha(alpha)),
+        Judgement::Bad(_) => ("Bad", Color::from_hex(0xeba0ac).with_alpha(alpha)),
+        Judgement::Miss(_) => ("Miss", Color::from_hex(0xf38ba8).with_alpha(alpha)),
+    };
+
+    let font_size = 40.0;
+    let (width, height) = (screen_width(), screen_height());
+    let dims = measure_text(text, None, font_size as u16, 1.0);
+    let y = match lane {
+        Lane::Up => (height / 2.0) - (height * 0.2),
+        Lane::Down => (height / 2.0) + (height * 0.2),
+    };
+    root_ui().label(
+        None,
+        &format!(
+            "J: text={:?} x={:?} y={:?} font_size={:?}",
+            text,
+            (0.2 * width) - dims.width / 2.0,
+            y + dims.height / 2.0,
+            font_size
+        ),
+    );
+    draw_text(
+        text,
+        (0.2 * width) - dims.width / 2.0,
+        y + dims.height / 2.0,
+        font_size,
+        colour,
+    );
 }
 
 pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
@@ -348,5 +449,16 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
                 &format!("HO: t={} x={} y={}", data.time, x_position, y_position),
             );
         }
+    });
+
+    // render judgements
+
+    // return to screen space
+    set_default_camera();
+
+    data.active_judgements.each(|queue, lane| {
+        queue.iter().for_each(|(judgement, created)| {
+            draw_judgement(&judgement, lane, *created, data.time);
+        });
     });
 }
