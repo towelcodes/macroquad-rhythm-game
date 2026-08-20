@@ -234,6 +234,7 @@ pub fn update(
 ) -> Option<StateTransition> {
     let time = data.audio_clock.time_ms();
     let render_up_to = render_up_to(data.lane_speed, time);
+    let (mut top_lane_down, mut bottom_lane_down) = (false, false);
 
     // process incoming messages (hits) ---
     input_rx.try_iter().for_each(|e| {
@@ -244,7 +245,10 @@ pub fn update(
 
                 // top lane
                 let judgement = match char {
-                    7 | 8 => hit_note(&mut data.active_hit_objects.up, instant, data.start),
+                    7 | 8 => {
+                        top_lane_down = true;
+                        hit_note(&mut data.active_hit_objects.up, instant, data.start)
+                    }
                     _ => None,
                 };
                 if let Some(judgement) = judgement {
@@ -256,7 +260,10 @@ pub fn update(
 
                 // bottom lane
                 let judgement = match char {
-                    43 | 47 => hit_note(&mut data.active_hit_objects.down, instant, data.start),
+                    43 | 47 => {
+                        bottom_lane_down = true;
+                        hit_note(&mut data.active_hit_objects.down, instant, data.start)
+                    }
                     _ => None,
                 };
                 if let Some(judgement) = judgement {
@@ -265,7 +272,14 @@ pub fn update(
                     data.active_judgements.down.push_back((judgement, time));
                 }
             }
-            _ => {}
+            KeyEvent::Up((char, _)) => {
+                debug!("Received input event: {:?}", e);
+                match char {
+                    7 | 8 => top_lane_down = false,
+                    43 | 47 => bottom_lane_down = false,
+                    _ => {}
+                }
+            }
         }
     });
 
@@ -333,7 +347,7 @@ pub fn update(
         time,
         bpm: data.bpm,
         lane_speed: data.lane_speed,
-        keys_down: (true, false),
+        keys_down: (top_lane_down, bottom_lane_down),
         score: 100000,
         accuracy: 98.5,
     }));
@@ -437,7 +451,7 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
     }
 
     // render notes
-    data.active_hit_objects.each(|objects| {
+    data.active_hit_objects.each(|objects, _| {
         for object in objects {
             let (x_position, y_position) =
                 calculate_note_position(object, data.time, data.lane_speed);
@@ -451,14 +465,24 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
         }
     });
 
-    // render judgements
-
     // return to screen space
     set_default_camera();
 
+    // render judgements
     data.active_judgements.each(|queue, lane| {
         queue.iter().for_each(|(judgement, created)| {
             draw_judgement(&judgement, lane, *created, data.time);
         });
     });
+
+    // render score
+    let (width, height) = (screen_width(), screen_height());
+    draw_text("0000000", width / 2.0, 40.0, 40.0, BLACK);
+    draw_text(
+        &format!("{:.2}", data.accuracy),
+        width / 2.0,
+        60.0,
+        40.0,
+        BLACK,
+    );
 }
