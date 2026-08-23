@@ -103,6 +103,7 @@ pub struct PlayingLogicData {
     lane_speed: u32,
     audio_clock: AudioClock,
     start: Instant, // Timestamp of when the song started
+    score: u32,
 }
 
 #[derive(Clone)]
@@ -163,6 +164,7 @@ pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData 
         lane_speed: 20,
         start: Instant::now(),
         judgements: vec![],
+        score: 0,
     }
 }
 
@@ -253,6 +255,7 @@ pub fn update(
                 };
                 if let Some(judgement) = judgement {
                     debug!("Note judgement: {:?}", judgement);
+                    add_score(&data.beatmap, &judgement, &mut data.score);
                     data.judgements.push((judgement.clone(), time));
                     data.active_judgements.up.push_back((judgement, time));
                     return;
@@ -268,6 +271,7 @@ pub fn update(
                 };
                 if let Some(judgement) = judgement {
                     debug!("Note judgement: {:?}", judgement);
+                    add_score(&data.beatmap, &judgement, &mut data.score);
                     data.judgements.push((judgement.clone(), time));
                     data.active_judgements.down.push_back((judgement, time));
                 }
@@ -293,8 +297,6 @@ pub fn update(
             }
         }
     });
-
-    // TODO: update score
 
     // hit objects ---
     // - peek the next hit element and check if it is in range
@@ -325,6 +327,7 @@ pub fn update(
                 if let Some(judgement) = should_pop_note(last, time, data.lane_speed) {
                     debug!("popping note: {:?}", judgement);
                     objects.pop_front();
+                    data.judgements.push((judgement.clone(), time));
                     match lane {
                         Lane::Up => {
                             data.active_judgements.up.push_back((judgement, time));
@@ -348,10 +351,47 @@ pub fn update(
         bpm: data.bpm,
         lane_speed: data.lane_speed,
         keys_down: (top_lane_down, bottom_lane_down),
-        score: 100000,
-        accuracy: 98.5,
+        score: data.score,
+        accuracy: calculate_accuracy(&data.judgements),
     }));
     None
+}
+
+/// Calculates the amount to add to a score
+/// given the beatmap and judgement
+pub(crate) fn add_score(beatmap: &Beatmap, judgement: &Judgement, score: &mut u32) {
+    // the max score you can get on any song is 1,000,000
+    // (perfect on all notes)
+    // FIXME it's possible for 1000000 to not be perfectly divisible, so it could be impossible to get 1000000 (WRITE about that + copy osu)
+    let max_score_per_note = 1000000 / beatmap.hit_objects.len() as u32;
+    *score += match judgement {
+        Judgement::Perfect(_) => max_score_per_note,
+        Judgement::Great(_) => (max_score_per_note / 4) * 3,
+        Judgement::Ok(_) => (max_score_per_note / 4) * 2,
+        Judgement::Bad(_) => max_score_per_note / 4,
+        Judgement::Miss(_) => 0,
+    };
+}
+
+/// Calculates the accuracy of the player based on the judgements taken
+/// Returns 1.0 (100%) when no judgements have been taken yet
+pub(crate) fn calculate_accuracy(judgements: &[(Judgement, u32)]) -> f32 {
+    if judgements.is_empty() {
+        return 1.0;
+    }
+
+    let total: f32 = judgements
+        .iter()
+        .map(|(judgement, _)| match judgement {
+            Judgement::Perfect(_) => 1.0,
+            Judgement::Great(_) => 0.75,
+            Judgement::Ok(_) => 0.5,
+            Judgement::Bad(_) => 0.25,
+            Judgement::Miss(_) => 0.0,
+        })
+        .sum();
+
+    total / judgements.len() as f32
 }
 
 /// Calculates the position a note should be on screen
@@ -475,11 +515,17 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
         });
     });
 
-    // render score
-    let (width, height) = (screen_width(), screen_height());
-    draw_text("0000000", width / 2.0, 40.0, 40.0, BLACK);
+    // render score and accuracy
+    let width = screen_width();
     draw_text(
-        &format!("{:.2}", data.accuracy),
+        &format!("{:07}", data.score),
+        width / 2.0,
+        40.0,
+        40.0,
+        BLACK,
+    );
+    draw_text(
+        &format!("{:.2}", data.accuracy * 100.0),
         width / 2.0,
         60.0,
         40.0,
