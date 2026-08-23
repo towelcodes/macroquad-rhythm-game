@@ -26,7 +26,6 @@ mod tests;
 mod beatmap;
 mod input;
 mod state;
-mod tween;
 mod update;
 mod util;
 

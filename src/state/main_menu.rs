@@ -11,8 +11,8 @@ use crate::{
     AssetStore, Assets, GlobalData,
     beatmap::{Beatmap, BeatmapMeta, HitObject, HitObjectType, Lane},
     input::KeyEvent,
-    tween::{Tween, TweenEasing, TweenState},
     update::{RenderState, StateTransition},
+    util::tween::{Tween, TweenEasing, TweenState},
     util::ui::{self, AnchorPoint},
 };
 
