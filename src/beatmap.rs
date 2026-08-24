@@ -45,13 +45,11 @@ pub struct BeatmapMeta {
 }
 
 /// The full data for one level.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Beatmap {
-    // audio: todo
     pub meta: BeatmapMeta,
     pub bpm: u32,
     pub beats_per_bar: u8, // will affect where the bar lines are drawn, if enabled
-    // pub note_value: f32, // (not implemented) the note value as a fraction, where 1.0 -> 1 beat as specified by the BPM
     pub hit_objects: Vec<HitObject>,
     pub audio_path: String,
 }

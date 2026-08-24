@@ -18,6 +18,7 @@ use crate::{
     AssetStore, GlobalData,
     beatmap::{Beatmap, HitObject, Lane},
     input::KeyEvent,
+    state::results::ResultsData,
     update::{RenderState, StateTransition},
 };
 
@@ -230,7 +231,6 @@ fn render_up_to(lane_speed: u32, time: u32) -> u32 {
 
 pub fn update(
     data: &mut PlayingLogicData,
-    global_data: GlobalData,
     input_rx: Receiver<KeyEvent>,
     render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
@@ -354,9 +354,24 @@ pub fn update(
         score: data.score,
         accuracy: calculate_accuracy(&data.judgements),
     }));
+
+    // transition to results once every note has been played
+    if data.remaining_hit_objects.is_empty()
+        && data.active_hit_objects.up.is_empty()
+        && data.active_hit_objects.down.is_empty()
+    {
+        return Some(StateTransition::Results(ResultsData {
+            score: data.score,
+            accuracy: calculate_accuracy(&data.judgements),
+            judgements: data.judgements.clone(),
+            beatmap: data.beatmap.clone(),
+        }));
+    }
+
     None
 }
 
+// note: these functions need to be pub(crate) for unit tests
 /// Calculates the amount to add to a score
 /// given the beatmap and judgement
 pub(crate) fn add_score(beatmap: &Beatmap, judgement: &Judgement, score: &mut u32) {

@@ -155,6 +155,7 @@ async fn main() {
             RenderState::MainMenu(data) => main_menu::render(data, &ASSETS).await,
             RenderState::SongSelect(data) => song_select::render(data).await,
             RenderState::Playing(data) => playing::render(data, &ASSETS).await,
+            RenderState::Results(data) => results::render(data, &ASSETS).await,
             RenderState::None => {}
         };
 

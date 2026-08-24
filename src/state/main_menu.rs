@@ -109,7 +109,7 @@ pub fn update(
     None
 }
 
-pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
+pub async fn render(data: &MainMenuRenderData, _assets: &AssetStore) {
     let (ox, oy) = data.offset;
 
     let camera = Camera2D {

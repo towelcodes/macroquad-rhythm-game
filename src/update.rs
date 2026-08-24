@@ -15,6 +15,7 @@ use crate::{
     state::{
         main_menu::{MainMenuLogicData, MainMenuRenderData},
         playing::{PlayingLogicData, PlayingRenderData},
+        results::{ResultsData, ResultsLogicData, ResultsRenderData},
         song_select::{SongSelectLogicData, SongSelectRenderData},
         *,
     },
@@ -60,6 +61,7 @@ pub enum GameState {
     MainMenu(MainMenuLogicData),
     SongSelect(SongSelectLogicData),
     Playing(PlayingLogicData),
+    Results(ResultsLogicData),
 }
 
 #[derive(Clone)]
@@ -68,6 +70,7 @@ pub enum RenderState {
     MainMenu(MainMenuRenderData),
     SongSelect(SongSelectRenderData),
     Playing(PlayingRenderData),
+    Results(ResultsRenderData),
 }
 
 // TODO do this properly
@@ -75,7 +78,7 @@ pub enum StateTransition {
     MainMenu,
     SongSelect,
     StartBeatmap(Beatmap),
-    // Results,
+    Results(ResultsData),
 }
 
 pub struct StateMachine {
@@ -114,12 +117,10 @@ impl StateMachine {
                 self.input_rx.clone(),
                 &mut self.render_input,
             ),
-            GameState::Playing(data) => playing::update(
-                data,
-                Arc::clone(&self.global_data),
-                self.input_rx.clone(),
-                &mut self.render_input,
-            ),
+            GameState::Playing(data) => {
+                playing::update(data, self.input_rx.clone(), &mut self.render_input)
+            }
+            GameState::Results(data) => results::update(data, &mut self.render_input),
         };
 
         if let Some(transition) = should_transition {
@@ -128,6 +129,7 @@ impl StateMachine {
                 GameState::MainMenu(data) => main_menu::close(data),
                 GameState::SongSelect(data) => song_select::close(data),
                 GameState::Playing(data) => playing::close(data),
+                GameState::Results(data) => results::close(data),
             }
 
             // transition to new state
@@ -137,6 +139,12 @@ impl StateMachine {
                 StateTransition::StartBeatmap(beatmap) => {
                     GameState::Playing(playing::init(beatmap, self.input_rx.clone()))
                 }
+                StateTransition::Results(data) => GameState::Results(results::init(
+                    data.score,
+                    data.accuracy,
+                    data.judgements,
+                    data.beatmap,
+                )),
             };
 
             info!("transitioned");
