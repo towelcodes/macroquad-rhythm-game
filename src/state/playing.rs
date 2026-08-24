@@ -238,12 +238,21 @@ pub fn update(
     let render_up_to = render_up_to(data.lane_speed, time);
     let (mut top_lane_down, mut bottom_lane_down) = (false, false);
 
+    // flag to return early
+    let mut escape_pressed = false;
+
     // process incoming messages (hits) ---
     input_rx.try_iter().for_each(|e| {
         match e {
             KeyEvent::Down((char, instant)) => {
                 debug!("Received input event: {:?}", e);
                 // TODO: make the buttons configurable
+
+                // escape returns to the results screen early
+                if char == 53 {
+                    escape_pressed = true;
+                    return;
+                }
 
                 // top lane
                 let judgement = match char {
@@ -286,6 +295,16 @@ pub fn update(
             }
         }
     });
+
+    // return to results early if escape was pressed
+    if escape_pressed {
+        return Some(StateTransition::Results(ResultsData {
+            score: data.score,
+            accuracy: calculate_accuracy(&data.judgements),
+            judgements: data.judgements.clone(),
+            beatmap: data.beatmap.clone(),
+        }));
+    }
 
     // check for expired judgements
     data.active_judgements.each_mut(|queue, _| {
