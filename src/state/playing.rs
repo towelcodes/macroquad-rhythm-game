@@ -17,7 +17,7 @@ use triple_buffer::Input;
 use crate::{
     AssetStore, GlobalData,
     beatmap::{Beatmap, HitObject, Lane},
-    input::KeyEvent,
+    input::{Key, KeyEvent},
     state::results::ResultsData,
     update::{RenderState, StateTransition},
 };
@@ -244,19 +244,19 @@ pub fn update(
     // process incoming messages (hits) ---
     input_rx.try_iter().for_each(|e| {
         match e {
-            KeyEvent::Down((char, instant)) => {
+            KeyEvent::Down((key, instant)) => {
                 debug!("Received input event: {:?}", e);
                 // TODO: make the buttons configurable
 
                 // escape returns to the results screen early
-                if char == 53 {
+                if key == Key::Escape {
                     escape_pressed = true;
                     return;
                 }
 
                 // top lane
-                let judgement = match char {
-                    7 | 8 => {
+                let judgement = match key {
+                    Key::X | Key::C => {
                         top_lane_down = true;
                         hit_note(&mut data.active_hit_objects.up, instant, data.start)
                     }
@@ -271,8 +271,8 @@ pub fn update(
                 }
 
                 // bottom lane
-                let judgement = match char {
-                    43 | 47 => {
+                let judgement = match key {
+                    Key::Comma | Key::Period => {
                         bottom_lane_down = true;
                         hit_note(&mut data.active_hit_objects.down, instant, data.start)
                     }
@@ -285,11 +285,11 @@ pub fn update(
                     data.active_judgements.down.push_back((judgement, time));
                 }
             }
-            KeyEvent::Up((char, _)) => {
+            KeyEvent::Up((key, _)) => {
                 debug!("Received input event: {:?}", e);
-                match char {
-                    7 | 8 => top_lane_down = false,
-                    43 | 47 => bottom_lane_down = false,
+                match key {
+                    Key::X | Key::C => top_lane_down = false,
+                    Key::Comma | Key::Period => bottom_lane_down = false,
                     _ => {}
                 }
             }
