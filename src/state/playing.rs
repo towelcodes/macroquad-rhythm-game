@@ -289,7 +289,7 @@ pub fn update(
                 debug!("Received input event: {:?}", e);
                 match key {
                     Key::X | Key::C => top_lane_down = false,
-                    Key::Comma | Key::Period => bottom_lane_down = false,
+                    Key::Comma | Key::Dot => bottom_lane_down = false,
                     _ => {}
                 }
             }

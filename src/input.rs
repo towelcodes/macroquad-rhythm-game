@@ -29,7 +29,6 @@ pub static INPUT_SENDER: OnceLock<Sender<KeyEvent>> = OnceLock::new();
 /// Provides methods to convert from the keycode on the current platform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
-    // letters
     A,
     B,
     C,
@@ -56,7 +55,6 @@ pub enum Key {
     X,
     Y,
     Z,
-    // digits
     D0,
     D1,
     D2,
@@ -67,7 +65,6 @@ pub enum Key {
     D7,
     D8,
     D9,
-    // punctuation
     Comma,
     Dot,
     Minus,
@@ -79,22 +76,18 @@ pub enum Key {
     Backtick,
     LeftBracket,
     RightBracket,
-    // whitespace / control
     Space,
     Enter,
     Tab,
     Backspace,
     Escape,
-    // arrows
     Up,
     Down,
     Left,
     Right,
-    // modifiers
     Shift,
     Control,
     Alt,
-    // function keys
     F1,
     F2,
     F3,
@@ -107,7 +100,6 @@ pub enum Key {
     F10,
     F11,
     F12,
-    // any key we don't recognise; keeps the raw code so nothing is lost
     Unknown(u64),
 }
 
