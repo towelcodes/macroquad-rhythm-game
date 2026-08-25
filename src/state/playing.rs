@@ -272,7 +272,7 @@ pub fn update(
 
                 // bottom lane
                 let judgement = match key {
-                    Key::Comma | Key::Period => {
+                    Key::Comma | Key::Dot => {
                         bottom_lane_down = true;
                         hit_note(&mut data.active_hit_objects.down, instant, data.start)
                     }
