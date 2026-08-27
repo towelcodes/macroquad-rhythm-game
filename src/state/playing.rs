@@ -17,6 +17,7 @@ use triple_buffer::Input;
 use crate::{
     AssetStore, GlobalData,
     beatmap::{Beatmap, HitObject, Lane},
+    data::{GameConfig, KeyAction},
     input::{Key, KeyEvent},
     state::results::ResultsData,
     update::{RenderState, StateTransition},
@@ -142,7 +143,11 @@ impl AudioClock {
     }
 }
 
-pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData {
+pub fn init(
+    config: &GameConfig,
+    beatmap: Beatmap,
+    input_rx: Receiver<KeyEvent>,
+) -> Result<PlayingLogicData, Box<dyn Error>> {
     debug!("Init Playing state with beatmap {:?}", beatmap);
     let remaining_hit_objects =
         BinaryHeap::from_iter(beatmap.hit_objects.iter().cloned().map(Reverse));
@@ -151,11 +156,11 @@ pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData 
     // Clear the input queue to prepare
     input_rx.try_iter().for_each(|_| {});
 
-    // start the audio
-    let audio_clock =
-        AudioClock::new(beatmap.audio_path.as_ref(), 0).expect("audio failed to start!");
+    // start the audio, resolved relative to the songs folder
+    let audio_path = Path::new(&config.song_folder).join(&beatmap.audio_path);
+    let audio_clock = AudioClock::new(&audio_path, 0)?;
 
-    PlayingLogicData {
+    Ok(PlayingLogicData {
         audio_clock,
         beatmap,
         remaining_hit_objects,
@@ -166,7 +171,7 @@ pub fn init(beatmap: Beatmap, input_rx: Receiver<KeyEvent>) -> PlayingLogicData 
         start: Instant::now(),
         judgements: vec![],
         score: 0,
-    }
+    })
 }
 
 pub fn close(data: &PlayingLogicData) {
@@ -233,30 +238,36 @@ pub fn update(
     data: &mut PlayingLogicData,
     input_rx: Receiver<KeyEvent>,
     render_input: &mut Input<RenderState>,
+    config: &GameConfig,
 ) -> Option<StateTransition> {
     let time = data.audio_clock.time_ms();
     let render_up_to = render_up_to(data.lane_speed, time);
     let (mut top_lane_down, mut bottom_lane_down) = (false, false);
 
     // flag to return early
-    let mut escape_pressed = false;
+    let mut quit = false;
 
     // process incoming messages (hits) ---
     input_rx.try_iter().for_each(|e| {
         match e {
             KeyEvent::Down((key, instant)) => {
                 debug!("Received input event: {:?}", e);
-                // TODO: make the buttons configurable
+
+                let action = config.keybinds.get(&key);
+                if action.is_none() {
+                    return;
+                }
+                let action = action.unwrap();
 
                 // escape returns to the results screen early
-                if key == Key::Escape {
-                    escape_pressed = true;
+                if *action == KeyAction::Exit {
+                    quit = true;
                     return;
                 }
 
                 // top lane
-                let judgement = match key {
-                    Key::X | Key::C => {
+                let judgement = match action {
+                    KeyAction::LaneUp | KeyAction::LaneUpAlt => {
                         top_lane_down = true;
                         hit_note(&mut data.active_hit_objects.up, instant, data.start)
                     }
@@ -271,8 +282,8 @@ pub fn update(
                 }
 
                 // bottom lane
-                let judgement = match key {
-                    Key::Comma | Key::Dot => {
+                let judgement = match action {
+                    KeyAction::LaneDown | KeyAction::LaneDownAlt => {
                         bottom_lane_down = true;
                         hit_note(&mut data.active_hit_objects.down, instant, data.start)
                     }
@@ -287,17 +298,19 @@ pub fn update(
             }
             KeyEvent::Up((key, _)) => {
                 debug!("Received input event: {:?}", e);
-                match key {
-                    Key::X | Key::C => top_lane_down = false,
-                    Key::Comma | Key::Dot => bottom_lane_down = false,
-                    _ => {}
+                if let Some(action) = config.keybinds.get(&key) {
+                    match action {
+                        KeyAction::LaneUp | KeyAction::LaneUpAlt => top_lane_down = false,
+                        KeyAction::LaneDown | KeyAction::LaneDownAlt => bottom_lane_down = false,
+                        _ => {}
+                    }
                 }
             }
         }
     });
 
     // return to results early if escape was pressed
-    if escape_pressed {
+    if quit {
         return Some(StateTransition::Results(ResultsData {
             score: data.score,
             accuracy: calculate_accuracy(&data.judgements),

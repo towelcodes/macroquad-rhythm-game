@@ -5,12 +5,13 @@ use std::{
 };
 
 use crossbeam_channel::Receiver;
-use macroquad::prelude::info;
+use macroquad::prelude::{error, info};
 use triple_buffer::Input;
 
 use crate::{
     DebugData, GlobalData,
     beatmap::Beatmap,
+    data::GameConfig,
     input::KeyEvent,
     state::{
         main_menu::{MainMenuLogicData, MainMenuRenderData},
@@ -27,9 +28,13 @@ pub fn start_update_thread(
     render_input: Input<RenderState>,
     debug_input: &mut Input<DebugData>,
 ) {
+    // perform initial config load
+    let config = GameConfig::load();
+
     // create FSM
     let mut state_machine = StateMachine::new(
         GameState::MainMenu(main_menu::init()),
+        config,
         global_data,
         input_rx,
         render_input,
@@ -79,10 +84,12 @@ pub enum StateTransition {
     SongSelect,
     StartBeatmap(Beatmap),
     Results(ResultsData),
+    Quit,
 }
 
 pub struct StateMachine {
     current_state: GameState,
+    config: GameConfig,
     global_data: GlobalData,
     input_rx: Receiver<KeyEvent>,
     render_input: Input<RenderState>,
@@ -91,12 +98,14 @@ pub struct StateMachine {
 impl StateMachine {
     fn new(
         current_state: GameState,
+        config: GameConfig,
         global_data: GlobalData,
         input_rx: Receiver<KeyEvent>,
         render_input: Input<RenderState>,
     ) -> Self {
         Self {
             current_state,
+            config,
             global_data,
             input_rx,
             render_input,
@@ -117,9 +126,12 @@ impl StateMachine {
                 self.input_rx.clone(),
                 &mut self.render_input,
             ),
-            GameState::Playing(data) => {
-                playing::update(data, self.input_rx.clone(), &mut self.render_input)
-            }
+            GameState::Playing(data) => playing::update(
+                data,
+                self.input_rx.clone(),
+                &mut self.render_input,
+                &self.config,
+            ),
             GameState::Results(data) => results::update(data, &mut self.render_input),
         };
 
@@ -135,9 +147,17 @@ impl StateMachine {
             // transition to new state
             self.current_state = match transition {
                 StateTransition::MainMenu => GameState::MainMenu(main_menu::init()),
-                StateTransition::SongSelect => GameState::SongSelect(song_select::init()),
+                StateTransition::SongSelect => {
+                    GameState::SongSelect(song_select::init(&self.config))
+                }
                 StateTransition::StartBeatmap(beatmap) => {
-                    GameState::Playing(playing::init(beatmap, self.input_rx.clone()))
+                    match playing::init(&self.config, beatmap, self.input_rx.clone()) {
+                        Ok(init_data) => GameState::Playing(init_data),
+                        Err(why) => {
+                            error!("failed to start playing beatmap: {:?}", why);
+                            GameState::SongSelect(song_select::init(&self.config))
+                        }
+                    }
                 }
                 StateTransition::Results(data) => GameState::Results(results::init(
                     data.score,
@@ -145,6 +165,10 @@ impl StateMachine {
                     data.judgements,
                     data.beatmap,
                 )),
+                StateTransition::Quit => {
+                    // FIXME should quit more gracefully
+                    std::process::exit(0)
+                }
             };
 
             info!("transitioned");

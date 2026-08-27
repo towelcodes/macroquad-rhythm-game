@@ -17,7 +17,8 @@ use crate::{
 };
 
 enum UiEvent {
-    StartBeatmap,
+    Play,
+    Quit,
 }
 
 pub struct MainMenuLogicData {
@@ -67,34 +68,12 @@ pub fn update(
     // check for ui events
     for event in data.ui_events.try_iter() {
         match event {
-            UiEvent::StartBeatmap => {
-                // really this should look through the beatmap database for the one with the corresponding ID
-                // or something
-
-                // temporary
-                let mut hit_objects: Vec<HitObject> = vec![];
-                for i in 0..100 {
-                    hit_objects.push(HitObject {
-                        time: i * 500,
-                        lane: if i % 2 == 0 { Lane::Up } else { Lane::Down },
-                        kind: HitObjectType::Chip,
-                    });
-                }
-                let beatmap = Beatmap {
-                    meta: BeatmapMeta {
-                        title: "Exit This Earth's Atmosphere".to_string(),
-                        artist: "Camellia".to_string(),
-                        mapper: "teatowel".to_string(),
-                        level_name: "evil".to_string(),
-                        level: 9.5,
-                    },
-                    bpm: 200,
-                    beats_per_bar: 4,
-                    audio_path: "music.wav".to_owned(),
-                    hit_objects,
-                };
+            UiEvent::Play => {
                 info!("starting beatmap");
-                return Some(StateTransition::StartBeatmap(beatmap));
+                return Some(StateTransition::SongSelect);
+            }
+            UiEvent::Quit => {
+                return Some(StateTransition::Quit);
             }
         }
     }
@@ -136,9 +115,16 @@ pub async fn render(data: &MainMenuRenderData, _assets: &AssetStore) {
 
     ui::label((vec2(0.5, 0.4), AnchorPoint::Centre), "Rhythm Game");
 
-    if ui::button((vec2(0.5, 0.5), AnchorPoint::Centre), "Start") {
+    if ui::button((vec2(0.45, 0.5), AnchorPoint::Centre), "Quit") {
         trace!("click");
-        if let Err(why) = data.ui_events_sender.send(UiEvent::StartBeatmap) {
+        if let Err(why) = data.ui_events_sender.send(UiEvent::Quit) {
+            warn!("error sending ui event: {why:?}");
+        }
+    }
+
+    if ui::button((vec2(0.55, 0.5), AnchorPoint::Centre), "Play") {
+        trace!("click");
+        if let Err(why) = data.ui_events_sender.send(UiEvent::Play) {
             warn!("error sending ui event: {why:?}");
         }
     }

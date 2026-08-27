@@ -11,20 +11,11 @@ use triple_buffer::Input;
 use crate::{
     GlobalData,
     beatmap::{Beatmap, BeatmapMeta, HitObject, HitObjectType, Lane},
+    data::{GameConfig, load_beatmaps},
     input::KeyEvent,
     update::{RenderState, StateTransition},
     util::ui::{self, AnchorPoint},
 };
-
-/// A selectable song entry.
-#[derive(Clone)]
-struct Song {
-    title: String,
-    artist: String,
-    mapper: String,
-    difficulty: f32,
-    bpm: u32,
-}
 
 enum UiEvent {
     SelectSong(usize),
@@ -33,58 +24,44 @@ enum UiEvent {
 }
 
 pub struct SongSelectLogicData {
-    songs: Vec<Song>,
+    beatmaps: Vec<Beatmap>,
     selected: Option<usize>,
     ui_events: Receiver<UiEvent>,
     ui_events_sender: Sender<UiEvent>,
 }
 
-/// This data will be published by the update loop, and passed to the render function.
 #[derive(Clone)]
 pub struct SongSelectRenderData {
-    songs: Vec<Song>,
+    beatmaps: Vec<Beatmap>,
     selected: Option<usize>,
     ui_events_sender: Sender<UiEvent>,
 }
 
-/// This function will run when the state is initialised. It provides the initial LogicData.
-pub fn init() -> SongSelectLogicData {
+pub fn init(config: &GameConfig) -> SongSelectLogicData {
     let (ui_events_sender, ui_events) = crossbeam_channel::unbounded();
-    let songs = vec![
-        Song {
-            title: "Exit This Earth's Atmosphere".to_string(),
-            artist: "Camellia".to_string(),
-            mapper: "teatowel".to_string(),
-            difficulty: 9.5,
-            bpm: 200,
-        },
-        Song {
-            title: "Example Song".to_string(),
-            artist: "Artist".to_string(),
-            mapper: "mapper".to_string(),
-            difficulty: 4.0,
-            bpm: 120,
-        },
-        Song {
-            title: "Another Song".to_string(),
-            artist: "Someone".to_string(),
-            mapper: "someone else".to_string(),
-            difficulty: 6.5,
-            bpm: 160,
-        },
-    ];
+
+    // load songs from the directory
+    let beatmaps = match load_beatmaps(&config.song_folder) {
+        Ok(beatmaps) => {
+            info!("loaded {} beatmaps successfully", beatmaps.len());
+            beatmaps
+        }
+        Err(why) => {
+            warn!("failed to load beatmaps. the list of beatmaps will be empty. {why:?}");
+            Vec::new()
+        }
+    };
+
     SongSelectLogicData {
-        songs,
+        beatmaps,
         selected: None,
         ui_events,
         ui_events_sender,
     }
 }
 
-/// This function will run when the state is transitioning away.
 pub fn close(data: &mut SongSelectLogicData) {}
 
-/// This function will be called each update tick.
 pub fn update(
     data: &mut SongSelectLogicData,
     global_data: GlobalData,
@@ -98,8 +75,8 @@ pub fn update(
             }
             UiEvent::Start => {
                 if let Some(index) = data.selected {
-                    let song = &data.songs[index];
-                    return Some(StateTransition::StartBeatmap(build_beatmap(song)));
+                    let beatmap = data.beatmaps.remove(index);
+                    return Some(StateTransition::StartBeatmap(beatmap));
                 }
             }
             UiEvent::MainMenu => {
@@ -109,40 +86,13 @@ pub fn update(
     }
 
     render_input.write(RenderState::SongSelect(SongSelectRenderData {
-        songs: data.songs.clone(),
+        beatmaps: data.beatmaps.clone(),
         selected: data.selected,
         ui_events_sender: data.ui_events_sender.clone(),
     }));
     None
 }
 
-/// Builds a placeholder beatmap for the given song.
-fn build_beatmap(song: &Song) -> Beatmap {
-    let mut hit_objects: Vec<HitObject> = vec![];
-    for i in 0..100 {
-        hit_objects.push(HitObject {
-            time: i * 500,
-            lane: if i % 2 == 0 { Lane::Up } else { Lane::Down },
-            kind: HitObjectType::Chip,
-        });
-    }
-    Beatmap {
-        meta: BeatmapMeta {
-            title: song.title.clone(),
-            artist: song.artist.clone(),
-            mapper: song.mapper.clone(),
-            level: song.difficulty,
-            level_name: "evil".to_string(),
-        },
-        bpm: song.bpm,
-        beats_per_bar: 4,
-        audio_path: "music.wav".to_owned(),
-        hit_objects,
-    }
-}
-
-/// This function will be called on the render thread each frame.
-/// It receives the RenderData published by the update loop, and draws to the screen.
 pub async fn render(data: &SongSelectRenderData) {
     set_default_camera();
 
@@ -167,7 +117,7 @@ pub async fn render(data: &SongSelectRenderData) {
         let mut ui = root_ui();
 
         // left: meta information box
-        let selected = data.selected.and_then(|i| data.songs.get(i));
+        let selected = data.selected.and_then(|i| data.beatmaps.get(i));
         Group::new(hash!("meta"), vec2(w * 0.3, h * 0.6))
             .position(vec2(w * 0.05, h * 0.2))
             .layout(Layout::Vertical)
@@ -175,12 +125,18 @@ pub async fn render(data: &SongSelectRenderData) {
                 ui.label(None, "Song Information");
                 ui.label(None, "");
                 match selected {
-                    Some(song) => {
-                        ui.label(None, &format!("Title: {}", song.title));
-                        ui.label(None, &format!("Artist: {}", song.artist));
-                        ui.label(None, &format!("Mapper: {}", song.mapper));
-                        ui.label(None, &format!("Difficulty: {:.1}", song.difficulty));
-                        ui.label(None, &format!("BPM: {}", song.bpm));
+                    Some(beatmap) => {
+                        ui.label(None, &format!("Title: {}", beatmap.meta.title));
+                        ui.label(None, &format!("Artist: {}", beatmap.meta.artist));
+                        ui.label(None, &format!("Mapper: {}", beatmap.meta.mapper));
+                        ui.label(
+                            None,
+                            &format!(
+                                "Difficulty: {:.1} {}",
+                                beatmap.meta.level, beatmap.meta.level_name
+                            ),
+                        );
+                        ui.label(None, &format!("BPM: {}", beatmap.bpm));
                     }
                     None => {
                         ui.label(None, "No song selected");
@@ -200,12 +156,12 @@ pub async fn render(data: &SongSelectRenderData) {
             .position(list_pos)
             .layout(Layout::Vertical)
             .ui(&mut ui, |ui| {
-                for (i, song) in data.songs.iter().enumerate() {
+                for (i, beatmap) in data.beatmaps.iter().enumerate() {
                     let is_selected = data.selected == Some(i);
                     // right-align: x is the group width minus the button width and margin
                     let x = list_width - button_width - margin;
                     let y = margin + i as f32 * (button_height + row_gap);
-                    if Button::new(song.title.as_str())
+                    if Button::new(beatmap.meta.title.as_str())
                         .position(vec2(x, y))
                         .size(vec2(button_width, button_height))
                         .selected(is_selected)

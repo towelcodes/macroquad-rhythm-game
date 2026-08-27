@@ -25,6 +25,9 @@ pub enum KeyAction {
     Exit,
 }
 
+/// All of the game's user configurable settings will live here.
+/// The GameConfig is loaded when the update thread starts and is
+/// provided to game states that need it by the FSM which owns it.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameConfig {
     pub(crate) song_folder: String, // location of the songs folder
@@ -56,7 +59,14 @@ impl GameConfig {
             Ok(data) => ron::from_str(&data).unwrap_or_default(),
             Err(why) => {
                 warn!("could not read config, falling back to default: {:?}", why);
-                Self::default()
+                let config = Self::default();
+
+                // save the config now
+                if let Err(why) = config.save() {
+                    warn!("failed to save config: {why:?}");
+                }
+
+                config
             }
         }
     }
@@ -73,7 +83,7 @@ impl GameConfig {
 
 // Loads the beatmaps from the specified directory
 // and returns a Vec containing all of them.
-pub fn load_beatmaps(path: &Path) -> Result<Vec<Beatmap>, Box<dyn Error>> {
+pub fn load_beatmaps<P: AsRef<Path>>(path: P) -> Result<Vec<Beatmap>, Box<dyn Error>> {
     let paths = fs::read_dir(path)?;
     let mut beatmaps: Vec<Beatmap> = vec![];
 
