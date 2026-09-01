@@ -14,6 +14,7 @@ use crate::{
     data::GameConfig,
     input::KeyEvent,
     state::{
+        editor::{EditorLogicData, EditorRenderData},
         main_menu::{MainMenuLogicData, MainMenuRenderData},
         playing::{PlayingLogicData, PlayingRenderData},
         results::{ResultsData, ResultsLogicData, ResultsRenderData},
@@ -33,7 +34,14 @@ pub fn start_update_thread(
 
     // create FSM
     let mut state_machine = StateMachine::new(
-        GameState::MainMenu(main_menu::init()),
+        // GameState::MainMenu(main_menu::init()),
+        match editor::init() {
+            Ok(init_data) => GameState::Editor(init_data),
+            Err(why) => {
+                error!("failed to start editor: {:?}", why);
+                GameState::MainMenu(main_menu::init())
+            }
+        },
         config,
         global_data,
         input_rx,
@@ -65,6 +73,7 @@ pub fn start_update_thread(
 pub enum GameState {
     MainMenu(MainMenuLogicData),
     SongSelect(SongSelectLogicData),
+    Editor(EditorLogicData),
     Playing(PlayingLogicData),
     Results(ResultsLogicData),
 }
@@ -74,6 +83,7 @@ pub enum RenderState {
     None,
     MainMenu(MainMenuRenderData),
     SongSelect(SongSelectRenderData),
+    Editor(EditorRenderData),
     Playing(PlayingRenderData),
     Results(ResultsRenderData),
 }
@@ -82,6 +92,7 @@ pub enum RenderState {
 pub enum StateTransition {
     MainMenu,
     SongSelect,
+    Editor,
     StartBeatmap(Beatmap),
     Results(ResultsData),
     Quit,
@@ -126,6 +137,7 @@ impl StateMachine {
                 self.input_rx.clone(),
                 &mut self.render_input,
             ),
+            GameState::Editor(data) => editor::update(data, &mut self.render_input),
             GameState::Playing(data) => playing::update(
                 data,
                 self.input_rx.clone(),
@@ -140,6 +152,7 @@ impl StateMachine {
             match &mut self.current_state {
                 GameState::MainMenu(data) => main_menu::close(data),
                 GameState::SongSelect(data) => song_select::close(data),
+                GameState::Editor(data) => editor::close(data),
                 GameState::Playing(data) => playing::close(data),
                 GameState::Results(data) => results::close(data),
             }
@@ -150,6 +163,13 @@ impl StateMachine {
                 StateTransition::SongSelect => {
                     GameState::SongSelect(song_select::init(&self.config))
                 }
+                StateTransition::Editor => match editor::init() {
+                    Ok(init_data) => GameState::Editor(init_data),
+                    Err(why) => {
+                        error!("failed to start editor: {:?}", why);
+                        GameState::MainMenu(main_menu::init())
+                    }
+                },
                 StateTransition::StartBeatmap(beatmap) => {
                     match playing::init(&self.config, beatmap, self.input_rx.clone()) {
                         Ok(init_data) => GameState::Playing(init_data),

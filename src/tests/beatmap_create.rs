@@ -21,7 +21,6 @@ fn create_beatmap() {
             level: 9.5,
         },
         bpm: 200,
-        beats_per_bar: 4,
         audio_path: "music.wav".to_owned(),
         hit_objects,
     };

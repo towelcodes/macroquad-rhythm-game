@@ -27,7 +27,7 @@ use crate::{
 const JUDGEMENT_DISPLAY_TIME: u32 = 600;
 
 // This represents the relative width of a note circle
-const NOTE_WIDTH: f32 = 0.06;
+pub const NOTE_WIDTH: f32 = 0.06;
 
 // The input timings for each judgement window
 const PERFECT: u32 = 60;
@@ -180,7 +180,7 @@ pub fn close(data: &PlayingLogicData) {
 
 /// Returns true if the given note should be removed from the active notes queue.
 /// If the note should be popped, a Judgement is returned.
-fn should_pop_note(note: &HitObject, time: u32, lane_speed: u32) -> Option<Judgement> {
+pub(crate) fn should_pop_note(note: &HitObject, time: u32, lane_speed: u32) -> Option<Judgement> {
     // FIXME: Should calculate it properly here instead of using another function
     if calculate_note_position(note, time, lane_speed).0 < (-1.0 - NOTE_WIDTH) {
         Some(Judgement::Miss(-(MISS as i32)))
@@ -230,7 +230,7 @@ fn hit_note(
     }
 }
 
-fn render_up_to(lane_speed: u32, time: u32) -> u32 {
+pub(crate) fn render_up_to(lane_speed: u32, time: u32) -> u32 {
     time + lane_speed * 50
 }
 
@@ -443,7 +443,7 @@ pub(crate) fn calculate_accuracy(judgements: &[(Judgement, u32)]) -> f32 {
 
 /// Calculates the position a note should be on screen
 /// given the current time and lane speed.
-fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32, f32) {
+pub(crate) fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32, f32) {
     // this is the time in future up to which notes should be shown
     // the end of the screen will show notes at this amount of time in the future (ms)
     let screen_end = render_up_to(lane_speed, time) - time;
@@ -523,8 +523,6 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
     };
 
     set_camera(&camera);
-
-    // render score TODO
 
     // render circles
     draw_circle_lines(-0.8, 0.2, NOTE_WIDTH, 0.005, BLACK);

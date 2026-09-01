@@ -95,7 +95,6 @@ fn load_beatmaps_reads_valid_ron_files() {
                 level_name: "easy".to_string(),
             },
             bpm: 120,
-            beats_per_bar: 4,
             audio_path: format!("{title}.ogg"),
             hit_objects,
         }

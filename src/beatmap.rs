@@ -35,7 +35,7 @@ impl Ord for HitObject {
 }
 
 /// Metadata associated with a Beatmap.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct BeatmapMeta {
     pub title: String,
     pub artist: String,
@@ -45,11 +45,10 @@ pub struct BeatmapMeta {
 }
 
 /// The full data for one level.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Beatmap {
     pub meta: BeatmapMeta,
     pub bpm: u32,
-    pub beats_per_bar: u8, // will affect where the bar lines are drawn, if enabled
     pub hit_objects: Vec<HitObject>,
     pub audio_path: String,
 }

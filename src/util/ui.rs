@@ -6,6 +6,14 @@ pub enum AnchorPoint {
     Centre,
 }
 
+/// Formats a time in milliseconds as `MM:SS.CC`.
+pub fn format_time(ms: u32) -> String {
+    let minutes = ms / 60_000;
+    let seconds = (ms % 60_000) / 1_000;
+    let centis = (ms % 1_000) / 10;
+    format!("{minutes:02}:{seconds:02}.{centis:02}")
+}
+
 fn calculate_position(p: Vec2, anchor: AnchorPoint, size: Vec2) -> Vec2 {
     let (w, h) = (screen_width(), screen_height());
 

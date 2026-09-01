@@ -1,3 +1,4 @@
+pub mod editor;
 pub mod main_menu;
 pub mod playing;
 pub mod results;

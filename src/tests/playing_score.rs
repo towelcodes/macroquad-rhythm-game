@@ -14,7 +14,6 @@ fn beatmap_with_notes(count: u32) -> Beatmap {
             level_name: "test".to_string(),
         },
         bpm: 120,
-        beats_per_bar: 4,
         hit_objects: (0..count)
             .map(|i| HitObject {
                 time: i * 100,
