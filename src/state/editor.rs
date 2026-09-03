@@ -194,14 +194,14 @@ pub fn render(data: &EditorRenderData) {
         }
         x += 70.0;
         if ui.button(vec2(x, y), "Load") {
-            // if let Some(path) = rfd::FileDialog::new()
-            //     .add_filter("Beatmap", &["ron"])
-            //     .pick_file()
-            // {
-            //     if let Err(why) = load_from_file(&mut state, &path) {
-            //         error!("failed to load beatmap: {why:?}");
-            //     }
-            // }
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Beatmap", &["ron"])
+                .pick_file()
+            {
+                if let Err(why) = load_from_file(&mut state, &path) {
+                    error!("failed to load beatmap: {why:?}");
+                }
+            }
         }
         x += 70.0;
         if ui.button(vec2(x, y), "Export") {
@@ -352,11 +352,9 @@ pub fn render(data: &EditorRenderData) {
         if state.future_hit_objects.front().is_none() {
             break;
         }
-
         if state.future_hit_objects.front().unwrap().time > render_up_to {
             break;
         }
-
         let object = state.future_hit_objects.pop_front().unwrap();
         state.current_hit_objects.push_back(object);
     }
