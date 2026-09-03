@@ -7,6 +7,7 @@ use std::{
 use kira::{AudioManager, AudioManagerSettings, sound::static_sound::StaticSoundHandle};
 use macroquad::{
     color::WHITE,
+    input::KeyCode::Pause,
     prelude::*,
     ui::{
         Layout, Skin, hash, root_ui,
@@ -27,10 +28,17 @@ enum SnapPoints {
     Quarter,
 }
 
+#[derive(PartialEq)]
+enum PlayingState {
+    Fowards,
+    Backwards,
+    Paused,
+}
+
 pub struct EditorState {
     /// current playback pos (ms)
     time: u32,
-    playing: bool,
+    playing: PlayingState,
     seek: f32,
     /// the lane speed is like the zoom
     lane_speed: u32,
@@ -67,7 +75,7 @@ pub fn init() -> Result<EditorLogicData, Box<dyn Error>> {
     Ok(EditorLogicData {
         state: Arc::new(Mutex::new(EditorState {
             time: 0,
-            playing: false,
+            playing: PlayingState::Paused,
             seek: 0.0,
             lane_speed: 20,
 
@@ -231,9 +239,33 @@ pub fn render(data: &EditorRenderData) {
         x += 110.0;
 
         // play/pause button
-        let label = if state.playing { "Pause" } else { "Play" };
+        let label = if state.playing == PlayingState::Fowards {
+            "Pause"
+        } else {
+            "Play"
+        };
         if ui.button(vec2(x, y), label) {
-            state.playing = !state.playing;
+            state.playing = match state.playing {
+                PlayingState::Fowards => PlayingState::Paused,
+                PlayingState::Paused => PlayingState::Fowards,
+                PlayingState::Backwards => PlayingState::Fowards,
+            };
+        }
+
+        x += 70.0;
+
+        // reverse play button
+        let label = if state.playing == PlayingState::Backwards {
+            "Pause"
+        } else {
+            "Reverse"
+        };
+        if ui.button(vec2(x, y), label) {
+            state.playing = match state.playing {
+                PlayingState::Backwards => PlayingState::Paused,
+                PlayingState::Paused => PlayingState::Backwards,
+                PlayingState::Fowards => PlayingState::Backwards,
+            };
         }
     }
 
@@ -337,38 +369,76 @@ pub fn render(data: &EditorRenderData) {
     root_ui().pop_skin();
 
     // FIXME this is not the proper way to progress time it should be synced to the audio clock
-    if state.playing {
-        state.time += (get_frame_time() * 1000.0) as u32;
+    match state.playing {
+        PlayingState::Fowards => {
+            state.time += (get_frame_time() * 1000.0) as u32;
+        }
+        PlayingState::Backwards => {
+            state.time = state
+                .time
+                .saturating_sub((get_frame_time() * 1000.0) as u32);
+        }
+        _ => {}
     }
 
     // -----
-    // check time, swap notes in or out
-    // TODO this will need to work both ways as time may increase or decrease
+    // check time, swap notes in or out.
     // TODO Probably use binary heap for performance
     let render_up_to = render_up_to(state.lane_speed, state.time);
 
-    // add future notes
-    loop {
-        if state.future_hit_objects.front().is_none() {
-            break;
-        }
-        if state.future_hit_objects.front().unwrap().time > render_up_to {
-            break;
-        }
-        let object = state.future_hit_objects.pop_front().unwrap();
-        state.current_hit_objects.push_back(object);
-    }
+    match state.playing {
+        // needs to run when paused so notes are still shown
+        PlayingState::Fowards | PlayingState::Paused => {
+            // add future notes
+            loop {
+                if state.future_hit_objects.front().is_none() {
+                    break;
+                }
+                if state.future_hit_objects.front().unwrap().time > render_up_to {
+                    break;
+                }
+                let object = state.future_hit_objects.pop_front().unwrap();
+                state.current_hit_objects.push_back(object);
+            }
 
-    // remove old notes
-    loop {
-        if let Some(last) = state.current_hit_objects.front() {
-            if should_pop_note(last, state.time, state.lane_speed).is_some() {
-                let object = state.current_hit_objects.pop_front().unwrap();
-                state.past_hit_objects.push_front(object);
-                continue;
+            // remove old notes
+            loop {
+                if let Some(last) = state.current_hit_objects.front() {
+                    if should_pop_note(last, state.time, state.lane_speed).is_some() {
+                        let object = state.current_hit_objects.pop_front().unwrap();
+                        state.past_hit_objects.push_front(object);
+                        continue;
+                    }
+                }
+                break;
             }
         }
-        break;
+        PlayingState::Backwards => {
+            // notes that are past the render window go back to the
+            // future queue
+            loop {
+                if let Some(last) = state.current_hit_objects.back() {
+                    if last.time > render_up_to {
+                        let object = state.current_hit_objects.pop_back().unwrap();
+                        state.future_hit_objects.push_front(object);
+                        continue;
+                    }
+                }
+                break;
+            }
+
+            // notes come in from the past queue
+            loop {
+                if let Some(first) = state.past_hit_objects.front() {
+                    if should_pop_note(first, state.time, state.lane_speed).is_none() {
+                        let object = state.past_hit_objects.pop_front().unwrap();
+                        state.current_hit_objects.push_front(object);
+                        continue;
+                    }
+                }
+                break;
+            }
+        }
     }
 
     // ------
