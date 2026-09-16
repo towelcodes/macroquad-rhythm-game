@@ -1,10 +1,15 @@
 use std::{
     collections::VecDeque,
     error::Error,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use kira::{AudioManager, AudioManagerSettings, sound::static_sound::StaticSoundHandle};
+use kira::{
+    AudioManager, AudioManagerSettings, Easing, StartTime, Tween,
+    sound::static_sound::{StaticSoundData, StaticSoundHandle},
+};
 use macroquad::{
     color::WHITE,
     input::KeyCode::Pause,
@@ -18,9 +23,18 @@ use triple_buffer::Input;
 
 use crate::{
     beatmap::{Beatmap, HitObject},
-    state::playing::{NOTE_WIDTH, calculate_note_position, render_up_to, should_pop_note},
+    data::GameConfig,
+    state::playing::{
+        AudioClock, NOTE_WIDTH, calculate_note_position, render_up_to, should_pop_note,
+    },
     update::{RenderState, StateTransition},
     util::ui::format_time,
+};
+
+const INSTANT_TWEEN: Tween = Tween {
+    start_time: StartTime::Immediate,
+    duration: Duration::ZERO,
+    easing: Easing::Linear,
 };
 
 enum SnapPoints {
@@ -38,7 +52,11 @@ enum PlayingState {
 pub struct EditorState {
     /// current playback pos (ms)
     time: u32,
+    /// the length of the track; the max for time
+    track_length: u32,
     playing: PlayingState,
+
+    /// used by the seekbar internally; when it changes time will be changed to match
     seek: f32,
     /// the lane speed is like the zoom
     lane_speed: u32,
@@ -57,9 +75,13 @@ pub struct EditorState {
     current_hit_objects: VecDeque<HitObject>,
     future_hit_objects: VecDeque<HitObject>,
 
+    // audio
     manager: AudioManager,
     active_audio: Option<StaticSoundHandle>,
+
     snap_points: SnapPoints,
+
+    song_folder: PathBuf,
 }
 
 pub struct EditorLogicData {
@@ -71,10 +93,11 @@ pub struct EditorRenderData {
     state: Arc<Mutex<EditorState>>,
 }
 
-pub fn init() -> Result<EditorLogicData, Box<dyn Error>> {
+pub fn init(config: &GameConfig) -> Result<EditorLogicData, Box<dyn Error>> {
     Ok(EditorLogicData {
         state: Arc::new(Mutex::new(EditorState {
             time: 0,
+            track_length: 0,
             playing: PlayingState::Paused,
             seek: 0.0,
             lane_speed: 20,
@@ -90,8 +113,10 @@ pub fn init() -> Result<EditorLogicData, Box<dyn Error>> {
             future_hit_objects: VecDeque::new(),
 
             snap_points: SnapPoints::Half,
+
             manager: AudioManager::new(AudioManagerSettings::default())?,
             active_audio: None,
+            song_folder: PathBuf::from(config.song_folder.clone()),
         })),
     })
 }
@@ -132,9 +157,17 @@ fn save_to_file(state: &mut EditorState, path: &std::path::Path) -> Result<(), B
     Ok(())
 }
 
-fn load_from_file(state: &mut EditorState, path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+fn load_from_file(state: &mut EditorState, path: &Path) -> Result<(), Box<dyn Error>> {
     let contents = std::fs::read_to_string(path)?;
     state.active_beatmap = ron::de::from_str(&contents)?;
+
+    // load the audio
+    let audio_path = state.song_folder.join(&state.active_beatmap.audio_path);
+    let audio_data = StaticSoundData::from_file(audio_path)?;
+    state.track_length = audio_data.duration().as_millis() as u32;
+    state.active_audio = Some(state.manager.play(audio_data)?);
+
+    state.active_audio.as_mut().unwrap().pause(INSTANT_TWEEN);
 
     // load the numbers as text
     state.bpm_text = format!("{}", state.active_beatmap.bpm);
@@ -200,6 +233,7 @@ pub fn render(data: &EditorRenderData) {
             //     }
             // }
         }
+
         x += 70.0;
         if ui.button(vec2(x, y), "Load") {
             if let Some(path) = rfd::FileDialog::new()
@@ -215,14 +249,16 @@ pub fn render(data: &EditorRenderData) {
         if ui.button(vec2(x, y), "Export") {
             // TODO: export the current beatmap
         }
+
         x += 90.0;
         if ui.button(vec2(x, y), "Edit Metadata") {
             state.show_metadata = !state.show_metadata;
         }
-        x += 150.0;
 
+        x += 150.0;
         // BPM text input
         ui.label(vec2(x, y + 3.0), "BPM");
+
         x += 45.0;
         let mut bpm = state.bpm_text.clone();
         Editbox::new(hash!("bpm-input"), vec2(60., widget_h))
@@ -236,8 +272,8 @@ pub fn render(data: &EditorRenderData) {
 
         // current time display
         ui.label(vec2(x, y + 3.0), &format_time(state.time));
-        x += 110.0;
 
+        x += 110.0;
         // play/pause button
         let label = if state.playing == PlayingState::Fowards {
             "Pause"
@@ -246,14 +282,24 @@ pub fn render(data: &EditorRenderData) {
         };
         if ui.button(vec2(x, y), label) {
             state.playing = match state.playing {
-                PlayingState::Fowards => PlayingState::Paused,
-                PlayingState::Paused => PlayingState::Fowards,
-                PlayingState::Backwards => PlayingState::Fowards,
+                PlayingState::Fowards => {
+                    if let Some(audio) = &mut state.active_audio {
+                        audio.pause(INSTANT_TWEEN);
+                    }
+                    PlayingState::Paused
+                }
+                PlayingState::Paused | PlayingState::Backwards => {
+                    let time = state.time as f64 / 1000.0;
+                    if let Some(audio) = &mut state.active_audio {
+                        audio.seek_to(time);
+                        audio.resume(INSTANT_TWEEN);
+                    }
+                    PlayingState::Fowards
+                }
             };
         }
 
         x += 70.0;
-
         // reverse play button
         let label = if state.playing == PlayingState::Backwards {
             "Pause"
@@ -262,9 +308,18 @@ pub fn render(data: &EditorRenderData) {
         };
         if ui.button(vec2(x, y), label) {
             state.playing = match state.playing {
-                PlayingState::Backwards => PlayingState::Paused,
-                PlayingState::Paused => PlayingState::Backwards,
-                PlayingState::Fowards => PlayingState::Backwards,
+                PlayingState::Backwards => {
+                    if let Some(audio) = &mut state.active_audio {
+                        audio.pause(INSTANT_TWEEN);
+                    }
+                    PlayingState::Paused
+                }
+                PlayingState::Paused | PlayingState::Fowards => {
+                    if let Some(audio) = &mut state.active_audio {
+                        audio.pause(INSTANT_TWEEN);
+                    }
+                    PlayingState::Backwards
+                }
             };
         }
     }
@@ -283,6 +338,8 @@ pub fn render(data: &EditorRenderData) {
                 ui.slider(hash!("seek"), "Seek", 0.0..1.0, &mut seek);
                 if seek != state.seek {
                     state.seek = seek;
+                    // change the time
+                    state.time = (state.track_length as f32 * state.seek).floor() as u32;
                 }
             });
     }
@@ -368,10 +425,17 @@ pub fn render(data: &EditorRenderData) {
 
     root_ui().pop_skin();
 
-    // FIXME this is not the proper way to progress time it should be synced to the audio clock
+    // When time progreses, the seek value is updated based on the length of the track
     match state.playing {
         PlayingState::Fowards => {
-            state.time += (get_frame_time() * 1000.0) as u32;
+            // the audio is used to progress the time; so check that
+            if let Some(audio) = &state.active_audio {
+                let time = (audio.position() * 1000.0) as u32;
+                state.time = time;
+            } else {
+                state.time += (get_frame_time() * 1000.0) as u32;
+                state.seek = (state.time as f32 / state.track_length as f32).clamp(0.0, 1.0);
+            }
         }
         PlayingState::Backwards => {
             state.time = state

@@ -35,7 +35,7 @@ pub fn start_update_thread(
     // create FSM
     let mut state_machine = StateMachine::new(
         // GameState::MainMenu(main_menu::init()),
-        match editor::init() {
+        match editor::init(&config) {
             Ok(init_data) => GameState::Editor(init_data),
             Err(why) => {
                 error!("failed to start editor: {:?}", why);
@@ -163,7 +163,7 @@ impl StateMachine {
                 StateTransition::SongSelect => {
                     GameState::SongSelect(song_select::init(&self.config))
                 }
-                StateTransition::Editor => match editor::init() {
+                StateTransition::Editor => match editor::init(&self.config) {
                     Ok(init_data) => GameState::Editor(init_data),
                     Err(why) => {
                         error!("failed to start editor: {:?}", why);
