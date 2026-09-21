@@ -28,7 +28,10 @@ use crate::{
         AudioClock, NOTE_WIDTH, calculate_note_position, render_up_to, should_pop_note,
     },
     update::{RenderState, StateTransition},
-    util::ui::format_time,
+    util::{
+        self, tween,
+        ui::{self, format_time},
+    },
 };
 
 const INSTANT_TWEEN: Tween = Tween {
@@ -42,7 +45,7 @@ enum SnapPoints {
     Quarter,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Copy, Clone)]
 enum PlayingState {
     Fowards,
     Backwards,
@@ -52,6 +55,14 @@ enum PlayingState {
 pub struct EditorState {
     /// current playback pos (ms)
     time: u32,
+    /// this will have a value when the time is being tweened to seek
+    /// (f32 because `tween::Tween` only supports float types)
+    time_tween: Option<(PlayingState, tween::Tween<f32>)>,
+    /// this will have a value only when a seek is pending;
+    /// the note rebalance logic will not continue until the reported time
+    /// is greater than or equal to this value
+    pending_seek: Option<u32>,
+
     /// the length of the track; the max for time
     track_length: u32,
     playing: PlayingState,
@@ -97,6 +108,9 @@ pub fn init(config: &GameConfig) -> Result<EditorLogicData, Box<dyn Error>> {
     Ok(EditorLogicData {
         state: Arc::new(Mutex::new(EditorState {
             time: 0,
+            time_tween: None,
+            pending_seek: None,
+
             track_length: 0,
             playing: PlayingState::Paused,
             seek: 0.0,
@@ -163,8 +177,9 @@ fn load_from_file(state: &mut EditorState, path: &Path) -> Result<(), Box<dyn Er
 
     // load the audio
     let audio_path = state.song_folder.join(&state.active_beatmap.audio_path);
-    let audio_data = StaticSoundData::from_file(audio_path)?;
+    let audio_data = StaticSoundData::from_file(audio_path)?.volume(-6.0);
     state.track_length = audio_data.duration().as_millis() as u32;
+    info!("the track length is {}", state.track_length);
     state.active_audio = Some(state.manager.play(audio_data)?);
 
     state.active_audio.as_mut().unwrap().pause(INSTANT_TWEEN);
@@ -193,6 +208,29 @@ pub fn update(
         state: data.state.clone(),
     }));
     None
+}
+
+/// Seek to the specified position in ms
+fn seek_to(position: u32, state: &mut EditorState) {}
+
+/// Resumes playing from the current position.
+/// If already playing, this will have no effect.
+fn play(state: &mut EditorState) {
+    info!("playing: at time=.");
+    if state.active_audio.is_some() {
+        state.playing = PlayingState::Fowards;
+        state.active_audio.as_mut().unwrap().resume(INSTANT_TWEEN);
+    }
+}
+
+/// Pauses the audio and objects
+fn pause(state: &mut EditorState) {
+    info!("pausing");
+}
+
+/// Reverses the objects, pausing the audio
+fn reverse(state: &mut EditorState) {
+    info!("reversing");
 }
 
 pub fn render(data: &EditorRenderData) {
@@ -293,6 +331,7 @@ pub fn render(data: &EditorRenderData) {
                     if let Some(audio) = &mut state.active_audio {
                         audio.seek_to(time);
                         audio.resume(INSTANT_TWEEN);
+                        state.pending_seek = Some(state.time);
                     }
                     PlayingState::Fowards
                 }
@@ -336,11 +375,28 @@ pub fn render(data: &EditorRenderData) {
             .ui(&mut ui, |ui| {
                 let mut seek = state.seek;
                 ui.slider(hash!("seek"), "Seek", 0.0..1.0, &mut seek);
-                if seek != state.seek {
-                    state.seek = seek;
-                    // change the time
-                    state.time = (state.track_length as f32 * state.seek).floor() as u32;
-                }
+                // if seek != state.seek {
+                //     info!("seeking: to {}", seek);
+                //     // change the time
+                //     // first the audio needs to be stopped
+                //     if let Some(audio) = &mut state.active_audio {
+                //         audio.pause(INSTANT_TWEEN);
+                //     }
+                //     // we need to transition the time so the notes have time to move between queues
+                //     state.time_tween = Some((
+                //         if seek > state.seek {
+                //             PlayingState::Fowards
+                //         } else {
+                //             PlayingState::Backwards
+                //         },
+                //         tween::Tween::new(
+                //             state.time as f32,
+                //             (state.track_length as f32 * seek).floor(),
+                //             Duration::from_millis(100),
+                //             tween::TweenEasing::Linear,
+                //         ),
+                //     ));
+                // }
             });
     }
 
@@ -425,24 +481,85 @@ pub fn render(data: &EditorRenderData) {
 
     root_ui().pop_skin();
 
-    // When time progreses, the seek value is updated based on the length of the track
-    match state.playing {
-        PlayingState::Fowards => {
-            // the audio is used to progress the time; so check that
-            if let Some(audio) = &state.active_audio {
-                let time = (audio.position() * 1000.0) as u32;
-                state.time = time;
-            } else {
-                state.time += (get_frame_time() * 1000.0) as u32;
-                state.seek = (state.time as f32 / state.track_length as f32).clamp(0.0, 1.0);
+    // progress the tween if one is active
+    if let Some((playing_state, tween)) = state.time_tween.as_mut() {
+        let playing = *playing_state;
+        let time = tween.get().ceil() as u32;
+        let finished = time == tween.target() as u32;
+
+        state.playing = if finished {
+            PlayingState::Paused
+        } else {
+            playing
+        };
+        state.time = time;
+
+        // check if the tween is completed, then stop playing
+        if finished {
+            state.time_tween = None;
+
+            if let Some(audio) = state.active_audio.as_mut() {
+                audio.seek_to(time as f64 / 1000.0);
+                audio.pause(INSTANT_TWEEN);
             }
         }
-        PlayingState::Backwards => {
-            state.time = state
-                .time
-                .saturating_sub((get_frame_time() * 1000.0) as u32);
+    }
+
+    // check if we are waiting for the audio thread to catch up
+    if let Some(pending_seek) = state.pending_seek {
+        // if we aren't waiting to play, we don't need to wait anymore
+        if state.playing != PlayingState::Fowards {
+            state.pending_seek = None;
+        } else if let Some(audio) = &state.active_audio {
+            let audio_time = (audio.position() * 1000.0) as u32;
+            if audio_time.abs_diff(pending_seek) < 150 {
+                info!(
+                    "audio caught up (audio={} seek={})",
+                    audio_time, pending_seek
+                );
+                state.pending_seek = None;
+            } else {
+                info!(
+                    "not updated yet, waiting... (audio={} seek={})",
+                    audio_time, pending_seek
+                );
+            }
+        } else {
+            state.pending_seek = None;
         }
-        _ => {}
+    }
+
+    // When time progreses, the seek value is updated based on the length of the track
+    if state.time_tween.is_none() && state.pending_seek.is_none() {
+        match state.playing {
+            PlayingState::Fowards => {
+                // the audio is used to progress the time; so check that
+                if let Some(audio) = &state.active_audio {
+                    if let Some(pending_seek) = state.pending_seek {
+                        state.time = pending_seek;
+                    } else {
+                        let time = (audio.position() * 1000.0) as u32;
+                        state.time = time;
+                    }
+                } else {
+                    state.time += (get_frame_time() * 1000.0) as u32;
+                }
+            }
+            PlayingState::Backwards => {
+                state.time = state
+                    .time
+                    .saturating_sub((get_frame_time() * 1000.0) as u32);
+            }
+            _ => {}
+        }
+        state.seek = (state.time as f32 / state.track_length as f32).clamp(0.0, 1.0);
+        ui::label(
+            None,
+            &format!(
+                "time={} track_length={} seek={}",
+                state.time as f32, state.track_length as f32, state.seek
+            ),
+        );
     }
 
     // -----

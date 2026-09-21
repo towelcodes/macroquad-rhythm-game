@@ -19,7 +19,6 @@ pub enum TweenEasing {
 }
 
 /// An animation playing over time
-/// TODO: Sync to audio clock
 pub struct Tween<T> {
     value: T,
     target: T,
