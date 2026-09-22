@@ -368,9 +368,10 @@ pub fn render(data: &EditorRenderData) {
             .ui(&mut ui, |ui| {
                 let mut seek = state.seek;
                 ui.slider(hash!("seek"), "Seek", 0.0..1.0, &mut seek);
-                info!("seek={} state.seek={}", seek, state.seek);
                 if seek != state.seek {
-                    info!("seeking: to {}", position);
+                    info!("seeking: to {}", seek);
+                    let new_time = (seek * state.track_length as f32).floor();
+
                     // change the time
                     // first the audio needs to be stopped
                     if let Some(audio) = &mut state.active_audio {
@@ -379,14 +380,14 @@ pub fn render(data: &EditorRenderData) {
 
                     // we need to transition the time so the notes have time to move between queues
                     state.time_tween = Some((
-                        if position > state.time {
+                        if new_time as u32 > state.time {
                             PlayingState::Fowards
                         } else {
                             PlayingState::Backwards
                         },
                         tween::Tween::new(
                             state.time as f32,
-                            position as f32,
+                            new_time,
                             Duration::from_millis(100),
                             tween::TweenEasing::Linear,
                         ),
@@ -544,7 +545,12 @@ pub fn render(data: &EditorRenderData) {
             }
             _ => {}
         }
-        state.seek = (state.time as f32 / state.track_length as f32).clamp(0.0, 1.0);
+
+        // ensure we do not divide by zero
+        if state.track_length > 0 {
+            state.seek = (state.time as f32 / state.track_length as f32).clamp(0.0, 1.0);
+        }
+
         ui::label(
             None,
             &format!(
