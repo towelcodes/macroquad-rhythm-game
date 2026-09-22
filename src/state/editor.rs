@@ -210,27 +210,49 @@ pub fn update(
     None
 }
 
-/// Seek to the specified position in ms
-fn seek_to(position: u32, state: &mut EditorState) {}
-
 /// Resumes playing from the current position.
-/// If already playing, this will have no effect.
+/// If already playing, will pause.
 fn play(state: &mut EditorState) {
-    info!("playing: at time=.");
-    if state.active_audio.is_some() {
-        state.playing = PlayingState::Fowards;
-        state.active_audio.as_mut().unwrap().resume(INSTANT_TWEEN);
-    }
-}
-
-/// Pauses the audio and objects
-fn pause(state: &mut EditorState) {
-    info!("pausing");
+    state.playing = match state.playing {
+        PlayingState::Fowards => {
+            info!("pausing");
+            if let Some(audio) = &mut state.active_audio {
+                audio.pause(INSTANT_TWEEN);
+            }
+            PlayingState::Paused
+        }
+        PlayingState::Paused | PlayingState::Backwards => {
+            info!("resuming at {}", state.time);
+            let time = state.time as f64 / 1000.0;
+            if let Some(audio) = &mut state.active_audio {
+                audio.seek_to(time);
+                audio.resume(INSTANT_TWEEN);
+                state.pending_seek = Some(state.time);
+            }
+            PlayingState::Fowards
+        }
+    };
 }
 
 /// Reverses the objects, pausing the audio
+/// If already reversing, will be pause
 fn reverse(state: &mut EditorState) {
-    info!("reversing");
+    state.playing = match state.playing {
+        PlayingState::Backwards => {
+            info!("pausing");
+            if let Some(audio) = &mut state.active_audio {
+                audio.pause(INSTANT_TWEEN);
+            }
+            PlayingState::Paused
+        }
+        PlayingState::Paused | PlayingState::Fowards => {
+            info!("reversing at {}", state.time);
+            if let Some(audio) = &mut state.active_audio {
+                audio.pause(INSTANT_TWEEN);
+            }
+            PlayingState::Backwards
+        }
+    };
 }
 
 pub fn render(data: &EditorRenderData) {
@@ -319,23 +341,7 @@ pub fn render(data: &EditorRenderData) {
             "Play"
         };
         if ui.button(vec2(x, y), label) {
-            state.playing = match state.playing {
-                PlayingState::Fowards => {
-                    if let Some(audio) = &mut state.active_audio {
-                        audio.pause(INSTANT_TWEEN);
-                    }
-                    PlayingState::Paused
-                }
-                PlayingState::Paused | PlayingState::Backwards => {
-                    let time = state.time as f64 / 1000.0;
-                    if let Some(audio) = &mut state.active_audio {
-                        audio.seek_to(time);
-                        audio.resume(INSTANT_TWEEN);
-                        state.pending_seek = Some(state.time);
-                    }
-                    PlayingState::Fowards
-                }
-            };
+            play(&mut state);
         }
 
         x += 70.0;
@@ -346,20 +352,7 @@ pub fn render(data: &EditorRenderData) {
             "Reverse"
         };
         if ui.button(vec2(x, y), label) {
-            state.playing = match state.playing {
-                PlayingState::Backwards => {
-                    if let Some(audio) = &mut state.active_audio {
-                        audio.pause(INSTANT_TWEEN);
-                    }
-                    PlayingState::Paused
-                }
-                PlayingState::Paused | PlayingState::Fowards => {
-                    if let Some(audio) = &mut state.active_audio {
-                        audio.pause(INSTANT_TWEEN);
-                    }
-                    PlayingState::Backwards
-                }
-            };
+            reverse(&mut state);
         }
     }
 
@@ -375,28 +368,31 @@ pub fn render(data: &EditorRenderData) {
             .ui(&mut ui, |ui| {
                 let mut seek = state.seek;
                 ui.slider(hash!("seek"), "Seek", 0.0..1.0, &mut seek);
-                // if seek != state.seek {
-                //     info!("seeking: to {}", seek);
-                //     // change the time
-                //     // first the audio needs to be stopped
-                //     if let Some(audio) = &mut state.active_audio {
-                //         audio.pause(INSTANT_TWEEN);
-                //     }
-                //     // we need to transition the time so the notes have time to move between queues
-                //     state.time_tween = Some((
-                //         if seek > state.seek {
-                //             PlayingState::Fowards
-                //         } else {
-                //             PlayingState::Backwards
-                //         },
-                //         tween::Tween::new(
-                //             state.time as f32,
-                //             (state.track_length as f32 * seek).floor(),
-                //             Duration::from_millis(100),
-                //             tween::TweenEasing::Linear,
-                //         ),
-                //     ));
-                // }
+                info!("seek={} state.seek={}", seek, state.seek);
+                if seek != state.seek {
+                    info!("seeking: to {}", position);
+                    // change the time
+                    // first the audio needs to be stopped
+                    if let Some(audio) = &mut state.active_audio {
+                        audio.pause(INSTANT_TWEEN);
+                    }
+
+                    // we need to transition the time so the notes have time to move between queues
+                    state.time_tween = Some((
+                        if position > state.time {
+                            PlayingState::Fowards
+                        } else {
+                            PlayingState::Backwards
+                        },
+                        tween::Tween::new(
+                            state.time as f32,
+                            position as f32,
+                            Duration::from_millis(100),
+                            tween::TweenEasing::Linear,
+                        ),
+                    ));
+                    state.seek = seek;
+                }
             });
     }
 
@@ -535,12 +531,8 @@ pub fn render(data: &EditorRenderData) {
             PlayingState::Fowards => {
                 // the audio is used to progress the time; so check that
                 if let Some(audio) = &state.active_audio {
-                    if let Some(pending_seek) = state.pending_seek {
-                        state.time = pending_seek;
-                    } else {
-                        let time = (audio.position() * 1000.0) as u32;
-                        state.time = time;
-                    }
+                    let time = (audio.position() * 1000.0) as u32;
+                    state.time = time;
                 } else {
                     state.time += (get_frame_time() * 1000.0) as u32;
                 }
