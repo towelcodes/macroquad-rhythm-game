@@ -368,7 +368,7 @@ pub fn render(data: &EditorRenderData) {
             .ui(&mut ui, |ui| {
                 let mut seek = state.seek;
                 ui.slider(hash!("seek"), "Seek", 0.0..1.0, &mut seek);
-                if seek != state.seek {
+                if (seek - state.seek).abs() > 0.005 {
                     info!("seeking: to {}", seek);
                     let new_time = (seek * state.track_length as f32).floor();
 
