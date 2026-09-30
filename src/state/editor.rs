@@ -379,6 +379,18 @@ pub fn render(data: &EditorRenderData) {
                 SnapPoints::Eighth => SnapPoints::Single,
             };
         }
+
+        x += 70.0;
+        let mut lane_speed = state.lane_speed as f32;
+        Group::new(hash!("lane-speed-adjust"), vec2(300.0, 30.0))
+            .position(vec2(x, y))
+            .layout(Layout::Horizontal)
+            .ui(&mut ui, |ui| {
+                ui.slider(hash!("lane-speed"), "Zoom", 1.0..80.0, &mut lane_speed);
+                if (lane_speed - state.lane_speed as f32).abs() > 0.005 {
+                    state.lane_speed = lane_speed as u32;
+                }
+            });
     }
 
     // --- bottom seek bar
