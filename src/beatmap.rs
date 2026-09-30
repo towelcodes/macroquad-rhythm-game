@@ -45,10 +45,21 @@ pub struct BeatmapMeta {
 }
 
 /// The full data for one level.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Beatmap {
     pub meta: BeatmapMeta,
     pub bpm: u32,
     pub hit_objects: Vec<HitObject>,
     pub audio_path: String,
+}
+
+impl Default for Beatmap {
+    fn default() -> Self {
+        Self {
+            meta: BeatmapMeta::default(),
+            bpm: 120,
+            hit_objects: Vec::new(),
+            audio_path: String::new(),
+        }
+    }
 }

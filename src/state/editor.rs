@@ -1,6 +1,7 @@
 use std::{
     collections::VecDeque,
     error::Error,
+    fmt::Display,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
@@ -22,11 +23,9 @@ use macroquad::{
 use triple_buffer::Input;
 
 use crate::{
-    beatmap::{Beatmap, HitObject},
+    beatmap::{Beatmap, HitObject, Lane},
     data::GameConfig,
-    state::playing::{
-        AudioClock, NOTE_WIDTH, calculate_note_position, render_up_to, should_pop_note,
-    },
+    state::playing::{AudioClock, NOTE_WIDTH, calculate_x_position, render_up_to, should_pop_note},
     update::{RenderState, StateTransition},
     util::{
         self, tween,
@@ -40,9 +39,23 @@ const INSTANT_TWEEN: Tween = Tween {
     easing: Easing::Linear,
 };
 
+#[repr(u32)]
+#[derive(PartialEq, Clone, Copy)]
 enum SnapPoints {
-    Half,
-    Quarter,
+    Single = 1,
+    Half = 2,
+    Quarter = 4,
+    Eighth = 8,
+}
+impl Display for SnapPoints {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SnapPoints::Single => write!(f, "1/1"),
+            SnapPoints::Half => write!(f, "1/2"),
+            SnapPoints::Quarter => write!(f, "1/4"),
+            SnapPoints::Eighth => write!(f, "1/8"),
+        }
+    }
 }
 
 #[derive(PartialEq, Copy, Clone)]
@@ -354,6 +367,18 @@ pub fn render(data: &EditorRenderData) {
         if ui.button(vec2(x, y), label) {
             reverse(&mut state);
         }
+
+        x += 70.0;
+        // snap points selector
+        let label = format!("{}", state.snap_points);
+        if ui.button(vec2(x, y), label) {
+            state.snap_points = match state.snap_points {
+                SnapPoints::Single => SnapPoints::Half,
+                SnapPoints::Half => SnapPoints::Quarter,
+                SnapPoints::Quarter => SnapPoints::Eighth,
+                SnapPoints::Eighth => SnapPoints::Single,
+            };
+        }
     }
 
     // --- bottom seek bar
@@ -370,7 +395,12 @@ pub fn render(data: &EditorRenderData) {
                 ui.slider(hash!("seek"), "Seek", 0.0..1.0, &mut seek);
                 if (seek - state.seek).abs() > 0.005 {
                     info!("seeking: to {}", seek);
-                    let new_time = (seek * state.track_length as f32).floor();
+
+                    let new_time = if seek <= 0.005 {
+                        0.0
+                    } else {
+                        (seek * state.track_length as f32).floor()
+                    };
 
                     // change the time
                     // first the audio needs to be stopped
@@ -635,8 +665,11 @@ pub fn render(data: &EditorRenderData) {
 
     // read notes from the queue and display them
     for object in &state.current_hit_objects {
-        let (x_position, y_position) =
-            calculate_note_position(&object, state.time, state.lane_speed);
+        let x_position = calculate_x_position(object.time, state.time, state.lane_speed);
+        let y_position = match object.lane {
+            Lane::Up => -0.2,
+            Lane::Down => 0.2,
+        };
         draw_circle(x_position, y_position, 0.05, BLACK);
 
         // debug text
@@ -644,6 +677,52 @@ pub fn render(data: &EditorRenderData) {
             None,
             &format!("HO: t={} x={} y={}", state.time, x_position, y_position),
         );
+    }
+
+    // draw beat lines
+    if state.active_beatmap.bpm != 0 {
+        let mut i = 0;
+        loop {
+            let beat_interval_ms = 60000 / state.active_beatmap.bpm;
+            let next = beat_interval_ms - (state.time % beat_interval_ms);
+            let x = calculate_x_position(
+                state.time + next + beat_interval_ms * i,
+                state.time,
+                state.lane_speed,
+            );
+
+            if x > 1.0 {
+                break;
+            }
+
+            // draw fractions
+            for j in 1..(state.snap_points as u32) as u32 {
+                let fraction_interval_ms = beat_interval_ms / (state.snap_points as u32);
+                let x = calculate_x_position(
+                    state.time + next + beat_interval_ms * i + fraction_interval_ms * j,
+                    state.time,
+                    state.lane_speed,
+                );
+                ui::label(
+                    None,
+                    &format!(
+                        "beat fraction: x={} next={} interval={} i={} j={}",
+                        x, next, fraction_interval_ms, i, j
+                    ),
+                );
+                draw_line(x, -1.0, x, 1.0, 0.002, GRAY);
+            }
+
+            ui::label(
+                None,
+                &format!(
+                    "beat line: x={} bpm={} next={} interval={}",
+                    x, state.active_beatmap.bpm, next, beat_interval_ms
+                ),
+            );
+            draw_line(x, -1.0, x, 1.0, 0.003, RED);
+            i += 1;
+        }
     }
 }
 

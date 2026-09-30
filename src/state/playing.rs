@@ -182,7 +182,7 @@ pub fn close(data: &PlayingLogicData) {
 /// If the note should be popped, a Judgement is returned.
 pub(crate) fn should_pop_note(note: &HitObject, time: u32, lane_speed: u32) -> Option<Judgement> {
     // FIXME: Should calculate it properly here instead of using another function
-    if calculate_note_position(note, time, lane_speed).0 < (-1.0 - NOTE_WIDTH) {
+    if calculate_x_position(note.time, time, lane_speed) < (-1.0 - NOTE_WIDTH) {
         Some(Judgement::Miss(-(MISS as i32)))
     } else {
         None
@@ -443,22 +443,18 @@ pub(crate) fn calculate_accuracy(judgements: &[(Judgement, u32)]) -> f32 {
 
 /// Calculates the position a note should be on screen
 /// given the current time and lane speed.
-pub(crate) fn calculate_note_position(note: &HitObject, time: u32, lane_speed: u32) -> (f32, f32) {
+pub(crate) fn calculate_x_position(object_time: u32, game_time: u32, lane_speed: u32) -> f32 {
     // this is the time in future up to which notes should be shown
     // the end of the screen will show notes at this amount of time in the future (ms)
-    let screen_end = render_up_to(lane_speed, time) - time;
+    let screen_end = render_up_to(lane_speed, game_time) - game_time;
 
     // Calculate the position of the hit object based on its time
-    let time_offset = note.time as f32 - time as f32;
+    let time_offset = object_time as f32 - game_time as f32;
     let x_offset = (time_offset / screen_end as f32) * 1.8;
 
     let x_position = -0.8 + x_offset;
-    let y_position = match note.lane {
-        Lane::Up => -0.2,
-        Lane::Down => 0.2,
-    };
 
-    (x_position, y_position)
+    x_position
 }
 
 /// Draws a judgement on the screen, given the time it was created and the lane
@@ -538,8 +534,11 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
     // render notes
     data.active_hit_objects.each(|objects, _| {
         for object in objects {
-            let (x_position, y_position) =
-                calculate_note_position(object, data.time, data.lane_speed);
+            let x_position = calculate_x_position(object.time, data.time, data.lane_speed);
+            let y_position = match object.lane {
+                Lane::Up => -0.2,
+                Lane::Down => 0.2,
+            };
             draw_circle(x_position, y_position, 0.05, BLACK);
 
             // debug text
