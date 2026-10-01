@@ -34,7 +34,6 @@ pub fn start_update_thread(
 
     // create FSM
     let mut state_machine = StateMachine::new(
-        // GameState::MainMenu(main_menu::init()),
         match editor::init(&config) {
             Ok(init_data) => GameState::Editor(init_data),
             Err(why) => {

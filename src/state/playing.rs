@@ -26,6 +26,9 @@ use crate::{
 // How long in ms judgements should show on the screen
 const JUDGEMENT_DISPLAY_TIME: u32 = 600;
 
+// The relative X position at which judgements will be taken relative to
+const JUDGE_AT: f32 = -0.8;
+
 // This represents the relative width of a note circle
 pub const NOTE_WIDTH: f32 = 0.06;
 
@@ -450,11 +453,47 @@ pub(crate) fn calculate_x_position(object_time: u32, game_time: u32, lane_speed:
 
     // Calculate the position of the hit object based on its time
     let time_offset = object_time as f32 - game_time as f32;
-    let x_offset = (time_offset / screen_end as f32) * 1.8;
+    let x_offset = (time_offset / screen_end as f32) * (1.0 - JUDGE_AT);
 
-    let x_position = -0.8 + x_offset;
+    let x_position = JUDGE_AT + x_offset;
 
     x_position
+}
+
+/// Finds the time that an relative x position corresponds to
+/// given the current time and lane speed.
+/// (inverse of calculate_x_position)
+pub(crate) fn calculate_time(x_position: f32, game_time: u32, lane_speed: u32) -> u32 {
+    let screen_end = render_up_to(lane_speed, game_time) - game_time;
+
+    // the x position as a fraction of the full
+    // when x position is at the judgement zone, that should be considered 0.0
+    let x_offset = x_position - JUDGE_AT;
+    let adjusted = (x_offset) / (1.0 - JUDGE_AT);
+
+    (adjusted * screen_end as f32).round() as u32 + game_time
+}
+
+/// Test to ensure that calculate_time always does the inverse
+/// of calculate_x_position
+#[test]
+fn calculate_time_is_inverse() {
+    let game_time = 100;
+    let lane_speed = 20;
+    let screen_end = (lane_speed * 50) as f32;
+    // one millisecond expressed in x units
+    let ms_in_x = (1.0 - JUDGE_AT) / screen_end;
+
+    // time -> x -> time lands on the same ms
+    let time = 800;
+    let x = calculate_x_position(time, game_time, lane_speed);
+    assert!((calculate_time(x, game_time, lane_speed) as i32 - time as i32).abs() <= 1);
+
+    // x -> time -> x stays within one ms of the original position
+    let x = 0.0;
+    let time = calculate_time(x, game_time, lane_speed);
+    let round_tripped = calculate_x_position(time, game_time, lane_speed);
+    assert!((x - round_tripped).abs() <= ms_in_x + f32::EPSILON);
 }
 
 /// Draws a judgement on the screen, given the time it was created and the lane
@@ -521,14 +560,14 @@ pub async fn render(data: &PlayingRenderData, assets: &AssetStore) {
     set_camera(&camera);
 
     // render circles
-    draw_circle_lines(-0.8, 0.2, NOTE_WIDTH, 0.005, BLACK);
-    draw_circle_lines(-0.8, -0.2, NOTE_WIDTH, 0.005, BLACK);
+    draw_circle_lines(JUDGE_AT, 0.2, NOTE_WIDTH, 0.005, BLACK);
+    draw_circle_lines(JUDGE_AT, -0.2, NOTE_WIDTH, 0.005, BLACK);
 
     if data.keys_down.0 {
-        draw_circle(-0.8, 0.2, NOTE_WIDTH, Color::new(0., 0., 0., 0.5));
+        draw_circle(JUDGE_AT, 0.2, NOTE_WIDTH, Color::new(0., 0., 0., 0.5));
     }
     if data.keys_down.1 {
-        draw_circle(-0.8, -0.2, NOTE_WIDTH, Color::new(0., 0., 0., 0.5));
+        draw_circle(JUDGE_AT, -0.2, NOTE_WIDTH, Color::new(0., 0., 0., 0.5));
     }
 
     // render notes

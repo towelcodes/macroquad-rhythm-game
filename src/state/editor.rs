@@ -14,6 +14,7 @@ use kira::{
 use macroquad::{
     color::WHITE,
     input::KeyCode::Pause,
+    miniquad::window::screen_size,
     prelude::*,
     ui::{
         Layout, Skin, hash, root_ui,
@@ -23,9 +24,11 @@ use macroquad::{
 use triple_buffer::Input;
 
 use crate::{
-    beatmap::{Beatmap, HitObject, Lane},
+    beatmap::{Beatmap, HitObject, HitObjectType, Lane},
     data::GameConfig,
-    state::playing::{AudioClock, NOTE_WIDTH, calculate_x_position, render_up_to, should_pop_note},
+    state::playing::{
+        AudioClock, NOTE_WIDTH, calculate_time, calculate_x_position, render_up_to, should_pop_note,
+    },
     update::{RenderState, StateTransition},
     util::{
         self, tween,
@@ -266,6 +269,71 @@ fn reverse(state: &mut EditorState) {
             PlayingState::Backwards
         }
     };
+}
+
+/// Remove the object with the corresponding lane and time,
+/// if present
+fn try_remove(
+    time: u32,
+    lane: Lane,
+    lane_speed: u32,
+    objects: &mut VecDeque<HitObject>,
+) -> Option<HitObject> {
+    // TODO: should scale the error with lane speed
+    const ERROR: i32 = 60;
+
+    match objects.binary_search_by(|obj| obj.time.cmp(&time)) {
+        Ok(index) => {
+            if objects[index].lane == lane {
+                return objects.remove(index);
+            } else {
+                info!("wrong lane, checking nearby");
+                if let Some(obj) = objects.get(index.wrapping_sub(1)) {
+                    if obj.lane == lane && (obj.time as i32 - time as i32).abs() < ERROR {
+                        return objects.remove(index - 1);
+                    }
+                }
+
+                if let Some(obj) = objects.get(index + 1) {
+                    if obj.lane == lane && (obj.time as i32 - time as i32).abs() < ERROR {
+                        return objects.remove(index + 1);
+                    }
+                }
+            }
+        }
+        Err(index) => {
+            // check if the note is close enough to delete
+            let index = if index >= objects.len() {
+                index - 1
+            } else {
+                index
+            };
+            let closest = &objects[index];
+
+            if objects[index].lane != lane {
+                info!("wrong lane, checking nearby");
+                if let Some(obj) = objects.get(index.wrapping_sub(1)) {
+                    if obj.lane == lane && (obj.time as i32 - time as i32).abs() < ERROR {
+                        return objects.remove(index - 1);
+                    }
+                }
+
+                if let Some(obj) = objects.get(index + 1) {
+                    if obj.lane == lane && (obj.time as i32 - time as i32).abs() < ERROR {
+                        return objects.remove(index + 1);
+                    }
+                }
+
+                return None;
+            }
+
+            if (closest.time as i32 - time as i32).abs() < ERROR {
+                return objects.remove(index);
+            }
+        }
+    }
+
+    None
 }
 
 pub fn render(data: &EditorRenderData) {
@@ -659,6 +727,71 @@ pub fn render(data: &EditorRenderData) {
                 }
                 break;
             }
+        }
+    }
+
+    // ------
+    // create and delete notes
+    let (mx, my) = mouse_position();
+    let mouse_local = mouse_position_local();
+    ui::label(
+        None,
+        &format!(
+            "x: {} y: {} rx: {} ry: {}",
+            mx, my, mouse_local.x, mouse_local.y
+        ),
+    );
+
+    if is_mouse_button_pressed(MouseButton::Left) {
+        info!("click");
+        if mouse_local.y < -0.15 && mouse_local.y > -0.6 {
+            // up
+            // get time from x
+            let time = calculate_time(mouse_local.x, state.time, state.lane_speed);
+            let object = HitObject {
+                time: time,
+                lane: Lane::Up,
+                kind: HitObjectType::Chip,
+            };
+
+            state
+                .current_hit_objects
+                .binary_search_by(|obj| obj.time.cmp(&time))
+                .err()
+                .map(|index| {
+                    state.current_hit_objects.insert(index, object);
+                });
+        } else if mouse_local.y > 0.15 && mouse_local.y < 0.6 {
+            // down
+            let time = calculate_time(mouse_local.x, state.time, state.lane_speed);
+            let object = HitObject {
+                time: time,
+                lane: Lane::Down,
+                kind: HitObjectType::Chip,
+            };
+
+            state
+                .current_hit_objects
+                .binary_search_by(|obj| obj.time.cmp(&time))
+                .err()
+                .map(|index| {
+                    state.current_hit_objects.insert(index, object);
+                });
+        }
+    } else if is_mouse_button_pressed(MouseButton::Right) {
+        // remove a note
+        info!("right click");
+        let lane = if mouse_local.y < -0.15 && mouse_local.y > -0.6 {
+            Some(Lane::Up)
+        } else if mouse_local.y > 0.15 && mouse_local.y < 0.6 {
+            Some(Lane::Down)
+        } else {
+            None
+        };
+
+        if let Some(lane) = lane {
+            let time = calculate_time(mouse_local.x, state.time, state.lane_speed);
+            try_remove(time, lane, state.lane_speed, &mut state.current_hit_objects);
         }
     }
 
