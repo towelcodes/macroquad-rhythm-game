@@ -13,8 +13,6 @@ use kira::{
 };
 use macroquad::{
     color::WHITE,
-    input::KeyCode::Pause,
-    miniquad::window::screen_size,
     prelude::*,
     ui::{
         Layout, Skin, hash, root_ui,
@@ -26,9 +24,7 @@ use triple_buffer::Input;
 use crate::{
     beatmap::{Beatmap, HitObject, HitObjectType, Lane},
     data::GameConfig,
-    state::playing::{
-        AudioClock, NOTE_WIDTH, calculate_time, calculate_x_position, render_up_to, should_pop_note,
-    },
+    state::playing::{NOTE_WIDTH, calculate_time, calculate_x_position, render_up_to},
     update::{RenderState, StateTransition},
     util::{
         self, tween,
@@ -107,6 +103,7 @@ pub struct EditorState {
     active_audio: Option<StaticSoundHandle>,
 
     snap_points: SnapPoints,
+    snap_enabled: bool,
 
     song_folder: PathBuf,
 }
@@ -143,6 +140,7 @@ pub fn init(config: &GameConfig) -> Result<EditorLogicData, Box<dyn Error>> {
             future_hit_objects: VecDeque::new(),
 
             snap_points: SnapPoints::Half,
+            snap_enabled: true,
 
             manager: AudioManager::new(AudioManagerSettings::default())?,
             active_audio: None,
@@ -339,6 +337,21 @@ fn try_remove(
     }
 
     None
+}
+
+fn try_add(time: u32, lane: Lane, objects: &mut VecDeque<HitObject>) {
+    let object = HitObject {
+        time: time,
+        kind: HitObjectType::Chip,
+        lane,
+    };
+
+    objects
+        .binary_search_by(|obj| obj.time.cmp(&time))
+        .err()
+        .map(|index| {
+            objects.insert(index, object);
+        });
 }
 
 pub fn render(data: &EditorRenderData) {
@@ -749,39 +762,18 @@ pub fn render(data: &EditorRenderData) {
 
     if is_mouse_button_pressed(MouseButton::Left) {
         info!("click");
-        if mouse_local.y < -0.15 && mouse_local.y > -0.6 {
-            // up
-            // get time from x
-            let time = calculate_time(mouse_local.x, state.time, state.lane_speed);
-            let object = HitObject {
-                time: time,
-                lane: Lane::Up,
-                kind: HitObjectType::Chip,
-            };
 
-            state
-                .current_hit_objects
-                .binary_search_by(|obj| obj.time.cmp(&time))
-                .err()
-                .map(|index| {
-                    state.current_hit_objects.insert(index, object);
-                });
+        let lane = if mouse_local.y < -0.15 && mouse_local.y > -0.6 {
+            Some(Lane::Up)
         } else if mouse_local.y > 0.15 && mouse_local.y < 0.6 {
-            // down
-            let time = calculate_time(mouse_local.x, state.time, state.lane_speed);
-            let object = HitObject {
-                time: time,
-                lane: Lane::Down,
-                kind: HitObjectType::Chip,
-            };
+            Some(Lane::Down)
+        } else {
+            None
+        };
 
-            state
-                .current_hit_objects
-                .binary_search_by(|obj| obj.time.cmp(&time))
-                .err()
-                .map(|index| {
-                    state.current_hit_objects.insert(index, object);
-                });
+        if let Some(lane) = lane {
+            let time = calculate_time(mouse_local.x, state.time, state.lane_speed);
+            try_add(time, lane, &mut state.current_hit_objects);
         }
     } else if is_mouse_button_pressed(MouseButton::Right) {
         // remove a note
