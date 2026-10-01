@@ -302,6 +302,11 @@ fn try_remove(
             }
         }
         Err(index) => {
+            // make sure the queue isn't empty
+            if objects.len() == 0 {
+                return None;
+            }
+
             // check if the note is close enough to delete
             let index = if index >= objects.len() {
                 index - 1
