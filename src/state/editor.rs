@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     error::Error,
     fmt::Display,
     path::{Path, PathBuf},
@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use crossbeam_channel::Receiver;
 use kira::{
     AudioManager, AudioManagerSettings, Easing, StartTime, Tween,
     sound::static_sound::{StaticSoundData, StaticSoundHandle},
@@ -23,7 +24,8 @@ use triple_buffer::Input;
 
 use crate::{
     beatmap::{Beatmap, HitObject, HitObjectType, Lane},
-    data::GameConfig,
+    data::{GameConfig, KeyAction},
+    input::{Key, KeyEvent},
     state::playing::{
         NOTE_WIDTH, calculate_time, calculate_x_position, render_up_to, should_pop_note,
     },
@@ -39,6 +41,9 @@ const INSTANT_TWEEN: Tween = Tween {
     duration: Duration::ZERO,
     easing: Easing::Linear,
 };
+
+const MIN_LANE_SPEED: f32 = 1.0;
+const MAX_LANE_SPEED: f32 = 80.0;
 
 #[repr(u32)]
 #[derive(PartialEq, Clone, Copy)]
@@ -108,6 +113,8 @@ pub struct EditorState {
     snap_enabled: bool,
 
     song_folder: PathBuf,
+    input_rx: Receiver<KeyEvent>,
+    keybinds: HashMap<Key, KeyAction>,
 }
 
 pub struct EditorLogicData {
@@ -119,7 +126,10 @@ pub struct EditorRenderData {
     state: Arc<Mutex<EditorState>>,
 }
 
-pub fn init(config: &GameConfig) -> Result<EditorLogicData, Box<dyn Error>> {
+pub fn init(
+    config: &GameConfig,
+    input_rx: Receiver<KeyEvent>,
+) -> Result<EditorLogicData, Box<dyn Error>> {
     Ok(EditorLogicData {
         state: Arc::new(Mutex::new(EditorState {
             time: 0,
@@ -147,6 +157,8 @@ pub fn init(config: &GameConfig) -> Result<EditorLogicData, Box<dyn Error>> {
             manager: AudioManager::new(AudioManagerSettings::default())?,
             active_audio: None,
             song_folder: PathBuf::from(config.song_folder.clone()),
+            keybinds: config.keybinds.clone(),
+            input_rx,
         })),
     })
 }
@@ -267,6 +279,32 @@ fn reverse(state: &mut EditorState) {
             PlayingState::Backwards
         }
     };
+}
+
+/// Seeks to the specified position.
+fn seek_to(target: u32, state: &mut EditorState) {
+    info!("seeking: to {}", target);
+
+    // change the time
+    // first the audio needs to be stopped
+    if let Some(audio) = &mut state.active_audio {
+        audio.pause(INSTANT_TWEEN);
+    }
+
+    // we need to transition the time so the notes have time to move between queues
+    state.time_tween = Some((
+        if target as u32 > state.time {
+            PlayingState::Fowards
+        } else {
+            PlayingState::Backwards
+        },
+        tween::Tween::new(
+            state.time as f32,
+            target as f32,
+            Duration::from_millis(100),
+            tween::TweenEasing::Linear,
+        ),
+    ));
 }
 
 /// Remove the object with the corresponding lane and time,
@@ -541,7 +579,12 @@ pub fn render(data: &EditorRenderData) {
             .position(vec2(x, y))
             .layout(Layout::Horizontal)
             .ui(&mut ui, |ui| {
-                ui.slider(hash!("lane-speed"), "Zoom", 1.0..80.0, &mut lane_speed);
+                ui.slider(
+                    hash!("lane-speed"),
+                    "Zoom",
+                    MIN_LANE_SPEED..MAX_LANE_SPEED,
+                    &mut lane_speed,
+                );
                 if (lane_speed - state.lane_speed as f32).abs() > 0.005 {
                     state.lane_speed = lane_speed as u32;
                 }
@@ -569,26 +612,7 @@ pub fn render(data: &EditorRenderData) {
                         (seek * state.track_length as f32).floor()
                     };
 
-                    // change the time
-                    // first the audio needs to be stopped
-                    if let Some(audio) = &mut state.active_audio {
-                        audio.pause(INSTANT_TWEEN);
-                    }
-
-                    // we need to transition the time so the notes have time to move between queues
-                    state.time_tween = Some((
-                        if new_time as u32 > state.time {
-                            PlayingState::Fowards
-                        } else {
-                            PlayingState::Backwards
-                        },
-                        tween::Tween::new(
-                            state.time as f32,
-                            new_time,
-                            Duration::from_millis(100),
-                            tween::TweenEasing::Linear,
-                        ),
-                    ));
+                    seek_to(new_time as u32, &mut state);
                     state.seek = seek;
                 }
             });
@@ -813,6 +837,31 @@ pub fn render(data: &EditorRenderData) {
                     }
                 }
                 break;
+            }
+        }
+    }
+
+    // ------
+    // process input events
+    while let Ok(event) = state.input_rx.try_recv() {
+        if let KeyEvent::Down((key, _)) = event {
+            if let Some(action) = state.keybinds.get(&key) {
+                match action {
+                    KeyAction::EditorPlayPause => play(&mut state),
+                    KeyAction::EditorSeekForward => {
+                        seek_to(state.time.saturating_add(500), &mut state)
+                    }
+                    KeyAction::EditorSeekBack => {
+                        seek_to(state.time.saturating_sub(500), &mut state)
+                    }
+                    KeyAction::EditorZoomIn => {
+                        state.lane_speed = (state.lane_speed + 5).min(MAX_LANE_SPEED as u32);
+                    }
+                    KeyAction::EditorZoomOut => {
+                        state.lane_speed = (state.lane_speed - 5).max(MIN_LANE_SPEED as u32);
+                    }
+                    _ => {}
+                }
             }
         }
     }

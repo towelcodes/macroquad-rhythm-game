@@ -16,13 +16,21 @@ const CONFIG_PATH: &str = "config.ron";
 
 /// These are all functions that a key can map to.
 /// A HashMap is used to represent the pairs.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyAction {
     LaneUp,
     LaneUpAlt,
     LaneDown,
     LaneDownAlt,
     Exit,
+    Confirm,
+
+    // editor binds
+    EditorPlayPause,
+    EditorSeekForward,
+    EditorSeekBack,
+    EditorZoomIn,
+    EditorZoomOut,
 }
 
 /// All of the game's user configurable settings will live here.
@@ -45,6 +53,12 @@ impl Default for GameConfig {
                 (Key::Comma, KeyAction::LaneDown),
                 (Key::Dot, KeyAction::LaneDownAlt),
                 (Key::Escape, KeyAction::Exit),
+                (Key::Enter, KeyAction::Confirm),
+                (Key::Space, KeyAction::EditorPlayPause),
+                (Key::Right, KeyAction::EditorSeekForward),
+                (Key::Left, KeyAction::EditorSeekBack),
+                (Key::Up, KeyAction::EditorZoomIn),
+                (Key::Down, KeyAction::EditorZoomOut),
             ]),
         }
     }
