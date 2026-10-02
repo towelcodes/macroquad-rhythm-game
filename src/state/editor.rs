@@ -151,8 +151,6 @@ pub fn init(config: &GameConfig) -> Result<EditorLogicData, Box<dyn Error>> {
     })
 }
 
-pub fn open_beatmap(state: &mut EditorState) {}
-
 /// Collects all hit objects across the three queues
 /// and updates the beatmap data in the editor state
 fn collect_hit_objects(state: &mut EditorState) {
@@ -439,15 +437,15 @@ pub fn render(data: &EditorRenderData) {
 
         // use native file picker
         if ui.button(vec2(x, y), "Save") {
-            // if let Some(path) = rfd::FileDialog::new()
-            //     .add_filter("Beatmap", &["ron"])
-            //     .set_file_name("beatmap.ron")
-            //     .save_file()
-            // {
-            //     if let Err(why) = save_to_file(&mut state, &path) {
-            //         error!("failed to save beatmap: {why:?}");
-            //     }
-            // }
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Beatmap", &["ron"])
+                .set_file_name("beatmap.ron")
+                .save_file()
+            {
+                if let Err(why) = save_to_file(&mut state, &path) {
+                    error!("failed to save beatmap: {why:?}");
+                }
+            }
         }
 
         x += 70.0;
