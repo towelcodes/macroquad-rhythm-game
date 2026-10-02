@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crossbeam_channel::{Receiver, Sender};
 use macroquad::{
     prelude::*,
@@ -11,8 +13,8 @@ use triple_buffer::Input;
 use crate::{
     GlobalData,
     beatmap::{Beatmap, BeatmapMeta, HitObject, HitObjectType, Lane},
-    data::{GameConfig, load_beatmaps},
-    input::KeyEvent,
+    data::{GameConfig, KeyAction, load_beatmaps},
+    input::{Key, KeyEvent},
     update::{RenderState, StateTransition},
     util::ui::{self, AnchorPoint},
 };
@@ -64,8 +66,8 @@ pub fn close(data: &mut SongSelectLogicData) {}
 
 pub fn update(
     data: &mut SongSelectLogicData,
-    global_data: GlobalData,
     input_rx: Receiver<KeyEvent>,
+    keybinds: &HashMap<Key, KeyAction>,
     render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
     for event in data.ui_events.try_iter() {
@@ -81,6 +83,25 @@ pub fn update(
             }
             UiEvent::MainMenu => {
                 return Some(StateTransition::MainMenu);
+            }
+        }
+    }
+
+    while let Ok(event) = input_rx.try_recv() {
+        if let KeyEvent::Down((key, _)) = event {
+            if let Some(action) = keybinds.get(&key) {
+                match action {
+                    KeyAction::Exit => {
+                        return Some(StateTransition::MainMenu);
+                    }
+                    KeyAction::Confirm => {
+                        if let Some(index) = data.selected {
+                            let beatmap = data.beatmaps.remove(index);
+                            return Some(StateTransition::StartBeatmap(beatmap));
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }

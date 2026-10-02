@@ -18,6 +18,7 @@ use crate::{
 
 enum UiEvent {
     Play,
+    Edit,
     Quit,
 }
 
@@ -75,6 +76,10 @@ pub fn update(
             UiEvent::Quit => {
                 return Some(StateTransition::Quit);
             }
+            UiEvent::Edit => {
+                info!("starting editor");
+                return Some(StateTransition::Editor);
+            }
         }
     }
 
@@ -116,15 +121,19 @@ pub async fn render(data: &MainMenuRenderData, _assets: &AssetStore) {
     ui::label((vec2(0.5, 0.4), AnchorPoint::Centre), "Rhythm Game");
 
     if ui::button((vec2(0.45, 0.5), AnchorPoint::Centre), "Quit") {
-        trace!("click");
         if let Err(why) = data.ui_events_sender.send(UiEvent::Quit) {
             warn!("error sending ui event: {why:?}");
         }
     }
 
     if ui::button((vec2(0.55, 0.5), AnchorPoint::Centre), "Play") {
-        trace!("click");
         if let Err(why) = data.ui_events_sender.send(UiEvent::Play) {
+            warn!("error sending ui event: {why:?}");
+        }
+    }
+
+    if ui::button((vec2(0.5, 0.6), AnchorPoint::Centre), "Edit") {
+        if let Err(why) = data.ui_events_sender.send(UiEvent::Edit) {
             warn!("error sending ui event: {why:?}");
         }
     }

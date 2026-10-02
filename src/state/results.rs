@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crossbeam_channel::{Receiver, Sender};
 use macroquad::{
     prelude::*,
@@ -8,6 +10,8 @@ use triple_buffer::Input;
 use crate::{
     AssetStore,
     beatmap::{Beatmap, BeatmapMeta},
+    data::KeyAction,
+    input::{Key, KeyEvent},
     state::playing::Judgement,
     update::{RenderState, StateTransition},
     util::ui::{self, AnchorPoint},
@@ -71,14 +75,31 @@ pub fn close(_data: &ResultsLogicData) {}
 pub fn update(
     data: &mut ResultsLogicData,
     render_input: &mut Input<RenderState>,
+    input_rx: Receiver<KeyEvent>,
+    keybinds: &HashMap<Key, KeyAction>,
 ) -> Option<StateTransition> {
+    // ui events
     for event in data.ui_rx.try_iter() {
         match event {
             UiEvent::MainMenu => {
-                return Some(StateTransition::MainMenu);
+                return Some(StateTransition::SongSelect);
             }
             UiEvent::Retry => {
                 return Some(StateTransition::StartBeatmap(data.beatmap.clone()));
+            }
+        }
+    }
+
+    // keybinds
+    while let Ok(event) = input_rx.try_recv() {
+        if let KeyEvent::Down((key, _)) = event {
+            if let Some(action) = keybinds.get(&key) {
+                match action {
+                    KeyAction::Exit => {
+                        return Some(StateTransition::SongSelect);
+                    }
+                    _ => {}
+                }
             }
         }
     }

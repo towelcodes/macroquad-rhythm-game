@@ -34,13 +34,14 @@ pub fn start_update_thread(
 
     // create FSM
     let mut state_machine = StateMachine::new(
-        match editor::init(&config, input_rx.clone()) {
-            Ok(init_data) => GameState::Editor(init_data),
-            Err(why) => {
-                error!("failed to start editor: {:?}", why);
-                GameState::MainMenu(main_menu::init())
-            }
-        },
+        GameState::MainMenu(main_menu::init()),
+        //match editor::init(&config, input_rx.clone()) {
+        //     Ok(init_data) => GameState::Editor(init_data),
+        //     Err(why) => {
+        //         error!("failed to start editor: {:?}", why);
+        //         GameState::MainMenu(main_menu::init())
+        //     }
+        // },
         config,
         global_data,
         input_rx,
@@ -132,8 +133,8 @@ impl StateMachine {
             ),
             GameState::SongSelect(data) => song_select::update(
                 data,
-                Arc::clone(&self.global_data),
                 self.input_rx.clone(),
+                &self.config.keybinds,
                 &mut self.render_input,
             ),
             GameState::Editor(data) => editor::update(data, &mut self.render_input),
@@ -143,7 +144,12 @@ impl StateMachine {
                 &mut self.render_input,
                 &self.config,
             ),
-            GameState::Results(data) => results::update(data, &mut self.render_input),
+            GameState::Results(data) => results::update(
+                data,
+                &mut self.render_input,
+                self.input_rx.clone(),
+                &self.config.keybinds,
+            ),
         };
 
         if let Some(transition) = should_transition {

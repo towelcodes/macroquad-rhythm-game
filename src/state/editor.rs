@@ -3,7 +3,10 @@ use std::{
     error::Error,
     fmt::Display,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -115,9 +118,14 @@ pub struct EditorState {
     song_folder: PathBuf,
     input_rx: Receiver<KeyEvent>,
     keybinds: HashMap<Key, KeyAction>,
+
+    // if this flag is set to true, the update thread will
+    // request a state transition back to the main menu
+    quit: Arc<AtomicBool>,
 }
 
 pub struct EditorLogicData {
+    quit: Arc<AtomicBool>,
     state: Arc<Mutex<EditorState>>,
 }
 
@@ -130,7 +138,12 @@ pub fn init(
     config: &GameConfig,
     input_rx: Receiver<KeyEvent>,
 ) -> Result<EditorLogicData, Box<dyn Error>> {
+    // empty the input channel so previous inputs are not recorded
+    input_rx.try_iter().for_each(|_| {});
+
+    let quit = Arc::new(AtomicBool::new(false));
     Ok(EditorLogicData {
+        quit: quit.clone(),
         state: Arc::new(Mutex::new(EditorState {
             time: 0,
             time_tween: None,
@@ -158,6 +171,8 @@ pub fn init(
             active_audio: None,
             song_folder: PathBuf::from(config.song_folder.clone()),
             keybinds: config.keybinds.clone(),
+
+            quit,
             input_rx,
         })),
     })
@@ -227,9 +242,9 @@ pub fn update(
     data: &mut EditorLogicData,
     render_input: &mut Input<RenderState>,
 ) -> Option<StateTransition> {
-    // TODO: when implemented, deterministically advance `state.time` here while
-    // `playing` is true, e.g. based on the elapsed time since the last tick.
-
+    if data.quit.load(Ordering::Relaxed) {
+        return Some(StateTransition::MainMenu);
+    }
     render_input.write(RenderState::Editor(EditorRenderData {
         state: data.state.clone(),
     }));
@@ -859,6 +874,9 @@ pub fn render(data: &EditorRenderData) {
                     }
                     KeyAction::EditorZoomOut => {
                         state.lane_speed = (state.lane_speed - 5).max(MIN_LANE_SPEED as u32);
+                    }
+                    KeyAction::Exit => {
+                        state.quit.store(true, Ordering::Relaxed);
                     }
                     _ => {}
                 }
