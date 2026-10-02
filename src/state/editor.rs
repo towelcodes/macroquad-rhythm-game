@@ -359,10 +359,44 @@ fn try_add(
         lane,
     };
 
-    objects
-        .binary_search_by(|obj| obj.time.cmp(&time))
-        .err()
-        .map(|index| objects.insert(index, object));
+    info!("attempt insert: lane={:?} time={}", lane, time);
+
+    match objects.binary_search_by(|obj| obj.time.cmp(&time)) {
+        Ok(index) => {
+            // check the object doesn't already exist
+            if objects
+                .get(index)
+                .map(|obj| obj.lane == lane)
+                .unwrap_or(false)
+            {
+                info!("object already exists at time {} lane {:?}", time, lane);
+                return;
+            }
+
+            // check the object isn't adjacent
+            if objects
+                .get(index.wrapping_sub(1))
+                .map(|obj| obj.lane == lane && obj.time == time)
+                .unwrap_or(false)
+            {
+                info!("object already exists at time {} lane {:?}", time, lane);
+                return;
+            }
+
+            if objects.len() < index + 1 {
+                if objects
+                    .get(index + 1)
+                    .map(|obj| obj.lane == lane && obj.time == time)
+                    .unwrap_or(false)
+                {
+                    info!("object already exists at time {} lane {:?}", time, lane);
+                    return;
+                }
+            }
+            objects.insert(index, object);
+        }
+        Err(index) => objects.insert(index, object),
+    }
 }
 
 /// Interval in ms between adjacent snap lines for the given bpm and division
