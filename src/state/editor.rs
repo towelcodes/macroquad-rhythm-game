@@ -533,7 +533,12 @@ pub fn render(data: &EditorRenderData) {
             .multiline(false)
             .ui(&mut *ui, &mut bpm);
         if bpm != state.bpm_text {
-            state.bpm_text = bpm;
+            if let Ok(n) = bpm.parse::<u32>() {
+                if n > 0 {
+                    state.active_beatmap.bpm = n;
+                    state.bpm_text = bpm;
+                }
+            }
         }
         x += 70.0;
 
@@ -698,8 +703,11 @@ pub fn render(data: &EditorRenderData) {
         }
         if bpm != state.bpm_text {
             // this is also a number; validate the input
-            if bpm.parse::<u32>().is_ok() {
-                state.bpm_text = bpm;
+            if let Ok(n) = bpm.parse::<u32>() {
+                if n > 0 {
+                    state.active_beatmap.bpm = n;
+                    state.bpm_text = bpm;
+                }
             }
         }
         if audio_path != state.active_beatmap.audio_path {
