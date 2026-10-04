@@ -4,12 +4,16 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crossbeam_channel::Receiver;
-use macroquad::prelude::{error, info};
+use crossbeam_channel::{Receiver, Sender};
+use macroquad::{
+    color::{Color, RED},
+    logging::warn,
+    prelude::{error, info},
+};
 use triple_buffer::Input;
 
 use crate::{
-    DebugData, GlobalData,
+    DebugData, GlobalData, Notification,
     beatmap::Beatmap,
     data::GameConfig,
     input::KeyEvent,
@@ -26,6 +30,7 @@ use crate::{
 pub fn start_update_thread(
     global_data: GlobalData,
     input_rx: Receiver<KeyEvent>,
+    notify_tx: Sender<Notification>,
     render_input: Input<RenderState>,
     debug_input: &mut Input<DebugData>,
 ) {
@@ -45,6 +50,7 @@ pub fn start_update_thread(
         config,
         global_data,
         input_rx,
+        notify_tx,
         render_input,
     );
 
@@ -103,6 +109,7 @@ pub struct StateMachine {
     config: GameConfig,
     global_data: GlobalData,
     input_rx: Receiver<KeyEvent>,
+    notify_tx: Sender<Notification>,
     render_input: Input<RenderState>,
 }
 
@@ -112,6 +119,7 @@ impl StateMachine {
         config: GameConfig,
         global_data: GlobalData,
         input_rx: Receiver<KeyEvent>,
+        notify_tx: Sender<Notification>,
         render_input: Input<RenderState>,
     ) -> Self {
         Self {
@@ -119,6 +127,7 @@ impl StateMachine {
             config,
             global_data,
             input_rx,
+            notify_tx,
             render_input,
         }
     }
@@ -169,6 +178,13 @@ impl StateMachine {
                     match editor::init(&self.config, self.input_rx.clone()) {
                         Ok(init_data) => GameState::Editor(init_data),
                         Err(why) => {
+                            if let Err(why2) = self.notify_tx.send(Notification {
+                                color: RED,
+                                content: "Failed to start the editor. Details have been logged."
+                                    .into(),
+                            }) {
+                                warn!("failed to send error notification {:?}", why2);
+                            }
                             error!("failed to start editor: {:?}", why);
                             GameState::MainMenu(main_menu::init())
                         }
@@ -178,6 +194,13 @@ impl StateMachine {
                     match playing::init(&self.config, beatmap, self.input_rx.clone()) {
                         Ok(init_data) => GameState::Playing(init_data),
                         Err(why) => {
+                            if let Err(why2) = self.notify_tx.send(Notification {
+                                color: RED,
+                                content: "Failed to start the beatmap. Is the audio available?"
+                                    .into(),
+                            }) {
+                                warn!("failed to send error notification {:?}", why2);
+                            }
                             error!("failed to start playing beatmap: {:?}", why);
                             GameState::SongSelect(song_select::init(&self.config))
                         }

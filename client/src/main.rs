@@ -1,4 +1,5 @@
 use arc_swap::ArcSwap;
+use crossbeam_channel::Receiver;
 use kira::sound::static_sound::StaticSoundData;
 use kira::track::TrackBuilder;
 use kira::{AudioManager, AudioManagerSettings, DefaultBackend};
@@ -7,6 +8,7 @@ use macroquad::ui::widgets::Texture;
 use macroquad::ui::{Skin, StyleBuilder, root_ui};
 use macroquad::{Error, prelude::*};
 use std::cell::LazyCell;
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
@@ -19,6 +21,7 @@ use triple_buffer::triple_buffer;
 use crate::input::input_loop;
 use crate::state::*;
 use crate::update::{RenderState, start_update_thread};
+use crate::util::ui::{self, AnchorPoint};
 
 #[cfg(test)]
 mod tests;
@@ -26,10 +29,10 @@ mod tests;
 mod beatmap;
 mod data;
 mod input;
+mod net;
 mod state;
 mod update;
 mod util;
-
 /*
 main thread has rendering logic
 - input polling thread
@@ -65,6 +68,12 @@ fn window_conf() -> Conf {
     }
 }
 
+#[derive(Debug)]
+pub struct Notification {
+    color: Color,
+    content: String,
+}
+
 #[derive(Default)]
 pub struct Data {}
 
@@ -98,12 +107,56 @@ pub fn load_assets(path: &Path) -> Result<Assets, Error> {
     })
 }
 
+const NOTIFICATIONS_DURATION: Duration = Duration::from_secs(5);
+fn draw_notifications(
+    notify_rx: &Receiver<Notification>,
+    active_notifications: &mut VecDeque<(Notification, Instant)>,
+) {
+    notify_rx.try_iter().for_each(|notification| {
+        active_notifications.push_back((
+            notification,
+            Instant::now().checked_add(NOTIFICATIONS_DURATION).unwrap(),
+        ));
+    });
+
+    while active_notifications.front().is_some()
+        && active_notifications.front().unwrap().1 - Instant::now() == Duration::ZERO
+    {
+        active_notifications.pop_front();
+    }
+
+    for (n, notification) in active_notifications.iter().enumerate() {
+        let (notification, _) = notification;
+        // set the color
+        let label_style = root_ui()
+            .style_builder()
+            .text_color(notification.color)
+            .build();
+        let skin = Skin {
+            label_style,
+            ..root_ui().default_skin()
+        };
+        root_ui().push_skin(&skin);
+
+        ui::label(
+            (vec2(0.01, 0.99 - (0.01 * n as f32)), AnchorPoint::TopLeft),
+            &format!("[!] {}", notification.content),
+        );
+
+        root_ui().pop_skin();
+    }
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     info!("starting up...");
 
     // global data
     let global_data: GlobalData = Arc::new(Data::default());
+
+    // notification channel
+    let (notify_tx, notify_rx) = crossbeam_channel::unbounded::<Notification>();
+    let mut active_notifications = VecDeque::new();
 
     // render data buffer
     let (render_input, mut render_output) = triple_buffer(&RenderState::None);
@@ -125,6 +178,7 @@ async fn main() {
             start_update_thread(
                 Arc::clone(&global_data),
                 input_rx,
+                notify_tx,
                 render_input,
                 &mut debug_input,
             )
@@ -160,6 +214,8 @@ async fn main() {
             RenderState::Results(data) => results::render(data, &ASSETS).await,
             RenderState::None => {}
         };
+
+        draw_notifications(&notify_rx, &mut active_notifications);
 
         // limit fps
         // target_duration
