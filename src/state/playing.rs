@@ -170,7 +170,7 @@ pub fn init(
         active_hit_objects: ActiveHitObjects::default(),
         active_judgements: ActiveJudgements::default(),
         bpm,
-        lane_speed: 20,
+        lane_speed: config.lane_speed,
         start: Instant::now(),
         judgements: vec![],
         score: 0,

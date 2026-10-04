@@ -125,12 +125,9 @@ impl StateMachine {
 
     fn update(&mut self) {
         let should_transition = match &mut self.current_state {
-            GameState::MainMenu(data) => main_menu::update(
-                data,
-                Arc::clone(&self.global_data),
-                self.input_rx.clone(),
-                &mut self.render_input,
-            ),
+            GameState::MainMenu(data) => {
+                main_menu::update(data, &mut self.config, &mut self.render_input)
+            }
             GameState::SongSelect(data) => song_select::update(
                 data,
                 self.input_rx.clone(),
@@ -194,6 +191,11 @@ impl StateMachine {
                 )),
                 StateTransition::Quit => {
                     // FIXME should quit more gracefully
+                    // save config!
+                    if let Err(why) = self.config.save() {
+                        error!("failed to save config: {:?}", why);
+                    }
+                    info!("saved config");
                     std::process::exit(0)
                 }
             };
