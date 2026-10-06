@@ -36,18 +36,18 @@ pub struct ScoreData<'a> {
 }
 
 /// Represents a score in the database
-#[derive(Debug)]
-struct Score {
-    id: i32,
+#[derive(Debug, Clone)]
+pub struct Score {
+    pub id: i32,
     /// sha256 of the beatmap data
-    beatmap_hash: [u8; 32],
+    pub beatmap_hash: [u8; 32],
     /// sha256 of the beatmap meta; to match older versions
-    meta_hash: [u8; 32],
-    by: OfflineUser,
-    early_quit: bool,
-    score: u32,
-    accuracy: f32,
-    judgements: JudgementsSummary,
+    pub meta_hash: [u8; 32],
+    pub by: OfflineUser,
+    pub early_quit: bool,
+    pub score: u32,
+    pub accuracy: f32,
+    pub judgements: JudgementsSummary,
 }
 
 pub fn init() -> Result<Connection, Box<dyn Error>> {

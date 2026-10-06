@@ -172,7 +172,7 @@ impl StateMachine {
             self.current_state = match transition {
                 StateTransition::MainMenu => GameState::MainMenu(main_menu::init()),
                 StateTransition::SongSelect => {
-                    GameState::SongSelect(song_select::init(&self.config))
+                    GameState::SongSelect(song_select::init(&self.config, self.notify_tx.clone()))
                 }
                 StateTransition::Editor => {
                     match editor::init(&self.config, self.input_rx.clone()) {
@@ -202,7 +202,10 @@ impl StateMachine {
                                 warn!("failed to send error notification {:?}", why2);
                             }
                             error!("failed to start playing beatmap: {:?}", why);
-                            GameState::SongSelect(song_select::init(&self.config))
+                            GameState::SongSelect(song_select::init(
+                                &self.config,
+                                self.notify_tx.clone(),
+                            ))
                         }
                     }
                 }

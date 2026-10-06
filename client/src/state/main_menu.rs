@@ -52,6 +52,7 @@ pub struct MainMenuRenderData {
 /// Run when initialiing the state (blocks update thread)
 pub fn init() -> MainMenuLogicData {
     let (ui_events_sender, ui_events) = crossbeam_channel::unbounded();
+    
     MainMenuLogicData {
         x: Tween::new(0., 0.3, Duration::from_secs(1), TweenEasing::EaseOut),
         y: Tween::new(0., 0.02, Duration::from_secs(1), TweenEasing::EaseOut),

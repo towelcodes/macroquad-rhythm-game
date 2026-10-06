@@ -11,9 +11,12 @@ use macroquad::{
 use triple_buffer::Input;
 
 use crate::{
-    GlobalData,
+    GlobalData, Notification,
     beatmap::{Beatmap, BeatmapMeta, HitObject, HitObjectType, Lane},
-    data::{GameConfig, KeyAction, load_beatmaps},
+    data::{
+        GameConfig, KeyAction, load_beatmaps,
+        scores::{self, Score},
+    },
     input::{Key, KeyEvent},
     update::{RenderState, StateTransition},
     util::ui::{self, AnchorPoint},
@@ -30,6 +33,9 @@ pub struct SongSelectLogicData {
     selected: Option<usize>,
     ui_events: Receiver<UiEvent>,
     ui_events_sender: Sender<UiEvent>,
+    notify_tx: Sender<Notification>,
+    leaderboard_data: Option<(usize, Vec<Score>)>,
+    active_beatmap_hash: Option<[u8; 32]>,
 }
 
 #[derive(Clone)]
@@ -37,9 +43,11 @@ pub struct SongSelectRenderData {
     beatmaps: Vec<Beatmap>,
     selected: Option<usize>,
     ui_events_sender: Sender<UiEvent>,
+    leaderboard_data: Option<(usize, Vec<Score>)>,
+    active_beatmap_hash: Option<[u8; 32]>,
 }
 
-pub fn init(config: &GameConfig) -> SongSelectLogicData {
+pub fn init(config: &GameConfig, notify_tx: Sender<Notification>) -> SongSelectLogicData {
     let (ui_events_sender, ui_events) = crossbeam_channel::unbounded();
 
     // load songs from the directory
@@ -59,6 +67,9 @@ pub fn init(config: &GameConfig) -> SongSelectLogicData {
         selected: None,
         ui_events,
         ui_events_sender,
+        notify_tx,
+        leaderboard_data: None,
+        active_beatmap_hash: None,
     }
 }
 
@@ -106,10 +117,42 @@ pub fn update(
         }
     }
 
+    // load scores if they aren't already loaded
+    if let Some(index) = data.selected {
+        if data.leaderboard_data.is_none() || data.leaderboard_data.as_ref().unwrap().0 != index {
+            let beatmap = &data.beatmaps[index];
+            match scores::get_scores_on(&beatmap.meta) {
+                Ok(scores) => {
+                    info!(
+                        "got {} scores for beatmap {}",
+                        scores.len(),
+                        beatmap.meta.title
+                    );
+                    data.leaderboard_data = Some((index, scores));
+                }
+                Err(why) => {
+                    let _ = data.notify_tx.send(Notification {
+                        content:
+                            "Failed to get scores for beatmap! Check the logs for more details."
+                                .to_string(),
+                        color: RED,
+                    });
+                    warn!(
+                        "failed to get scores for beatmap {}: {:?}",
+                        beatmap.meta.title, why
+                    );
+                }
+            };
+            data.active_beatmap_hash = Some(beatmap.hash());
+        }
+    }
+
     render_input.write(RenderState::SongSelect(SongSelectRenderData {
         beatmaps: data.beatmaps.clone(),
         selected: data.selected,
         ui_events_sender: data.ui_events_sender.clone(),
+        leaderboard_data: data.leaderboard_data.clone(),
+        active_beatmap_hash: data.active_beatmap_hash,
     }));
     None
 }
@@ -139,8 +182,8 @@ pub async fn render(data: &SongSelectRenderData) {
 
         // left: meta information box
         let selected = data.selected.and_then(|i| data.beatmaps.get(i));
-        Group::new(hash!("meta"), vec2(w * 0.3, h * 0.6))
-            .position(vec2(w * 0.05, h * 0.2))
+        Group::new(hash!("meta"), vec2(w * 0.3, h * 0.30))
+            .position(vec2(w * 0.05, h * 0.05))
             .layout(Layout::Vertical)
             .ui(&mut ui, |ui| {
                 ui.label(None, "Song Information");
@@ -161,6 +204,60 @@ pub async fn render(data: &SongSelectRenderData) {
                     }
                     None => {
                         ui.label(None, "No song selected");
+                    }
+                }
+            });
+
+        Group::new(hash!("leaderboard"), vec2(w * 0.3, h * 0.5))
+            .position(vec2(w * 0.05, h * 0.36))
+            .layout(Layout::Vertical)
+            .ui(&mut ui, |ui| {
+                ui.label(None, "Leaderboard");
+                if let Some((_, scores)) = &data.leaderboard_data {
+                    for (n, score) in scores.iter().enumerate() {
+                        ui.label(
+                            None,
+                            &format!(
+                                "#{} | {} - {:.2}% ({})",
+                                n + 1,
+                                score.score,
+                                score.accuracy * 100.0,
+                                score.by.name
+                            ),
+                        );
+
+                        // show warning if the play was not completed fullyS
+                        if score.early_quit {
+                            let label_style = ui.style_builder()
+                                .text_color(RED)
+                                .font_size(12)
+                                .build();
+                            let skin = Skin {
+                                label_style,
+                                ..ui.default_skin()
+                            };
+                            ui.push_skin(&skin);
+                            ui.label(None, "[!] This play was not completed fully.");
+                            ui.pop_skin();
+                        }
+
+                        // show warning if the hash differs
+                        if let Some(hash) = data.active_beatmap_hash {
+                            if hash != score.beatmap_hash {
+                                // make the font smaller
+                                let label_style = ui.style_builder()
+                                    .text_color(RED)
+                                    .font_size(12)
+                                    .build();
+                                let skin = Skin {
+                                    label_style,
+                                    ..ui.default_skin()
+                                };
+                                ui.push_skin(&skin);
+                                ui.label(None, "[!] This score was achieved on a different version of the beatmap.");
+                                ui.pop_skin();
+                            }
+                        }
                     }
                 }
             });
