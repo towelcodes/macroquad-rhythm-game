@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use macroquad::logging::info;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
@@ -52,25 +53,35 @@ struct Score {
 pub fn init() -> Result<Connection, Box<dyn Error>> {
     let conn = Connection::open("scores.db")?;
 
-    // perform migration
-    conn.execute(
-        "CREATE TABLE scores (
-                id integer PRIMARY KEY,
-                beatmap_hash blob,
-                meta_hash blob,
-                by_id integer,
-                by_name text,
-                early_quit integer,
-                score integer,
-                accuracy real,
-                perfect integer,
-                great integer,
-                okay integer,
-                bad integer,
-                miss integer
-            )",
-        (),
+    // check table exists
+    let table_exists: bool = conn.query_row(
+        "SELECT EXISTS (SELECT name FROM sqlite_master WHERE type='table' AND name='scores')",
+        [],
+        |row| row.get(0),
     )?;
+
+    if !table_exists {
+        // perform migration
+        info!("creating scores database");
+        conn.execute(
+            "CREATE TABLE scores (
+                    id integer PRIMARY KEY,
+                    beatmap_hash blob,
+                    meta_hash blob,
+                    by_id integer,
+                    by_name text,
+                    early_quit integer,
+                    score integer,
+                    accuracy real,
+                    perfect integer,
+                    great integer,
+                    okay integer,
+                    bad integer,
+                    miss integer
+                )",
+            (),
+        )?;
+    }
 
     Ok(conn)
 }
