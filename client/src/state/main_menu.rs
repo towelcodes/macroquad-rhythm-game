@@ -216,19 +216,11 @@ pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
     draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
 
     // set the UI skin
-    let label_style = root_ui()
-        .style_builder()
-        .with_font(&assets.load().cal_sans)
-        .unwrap()
-        .font_size(24)
-        .build();
-    let skin = Skin {
-        label_style,
-        ..root_ui().default_skin()
-    };
-    root_ui().push_skin(&skin);
+    root_ui().push_skin(&assets.load().title_skin);
 
     ui::label((vec2(0.5, 0.4), AnchorPoint::Centre), "Rhythm Game");
+
+    root_ui().pop_skin();
 
     // settings window
     if data.show_settings {
@@ -258,6 +250,4 @@ pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
             warn!("error sending ui event: {why:?}");
         }
     }
-
-    root_ui().pop_skin();
 }

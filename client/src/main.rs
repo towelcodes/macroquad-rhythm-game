@@ -84,6 +84,7 @@ pub struct Assets {
     // note: Texture2D,
     background_shader: Material,
     cal_sans: Font,
+    title_skin: Skin,
 }
 
 pub type AssetStore = LazyLock<ArcSwap<Assets>>;
@@ -119,10 +120,23 @@ pub fn load_assets(path: &Path) -> Result<Assets, Error> {
     let cal_sans = load_ttf_font_from_bytes(include_bytes!("../font/CalSans.ttf"))
         .expect("Failed to load CalSans.ttf");
 
+    // UI skins
+    let title_style = root_ui()
+        .style_builder()
+        .with_font(&cal_sans)
+        .unwrap()
+        .font_size(32)
+        .build();
+    let title_skin = Skin {
+        label_style: title_style,
+        ..root_ui().default_skin()
+    };
+
     Ok(Assets {
         // ui_button_bg: Image::from_file_with_format(&chip, Some(ImageFormat::Png))?,
         background_shader: material,
         cal_sans,
+        title_skin,
         // note: Texture2D::from_file_with_format(&chip, Some(ImageFormat::Png)),
     })
 }
