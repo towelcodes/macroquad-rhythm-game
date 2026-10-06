@@ -52,7 +52,7 @@ pub struct MainMenuRenderData {
 /// Run when initialiing the state (blocks update thread)
 pub fn init() -> MainMenuLogicData {
     let (ui_events_sender, ui_events) = crossbeam_channel::unbounded();
-    
+
     MainMenuLogicData {
         x: Tween::new(0., 0.3, Duration::from_secs(1), TweenEasing::EaseOut),
         y: Tween::new(0., 0.02, Duration::from_secs(1), TweenEasing::EaseOut),
@@ -184,7 +184,8 @@ fn draw_settings(data: &MainMenuRenderData) {
     }
 }
 
-pub async fn render(data: &MainMenuRenderData, _assets: &AssetStore) {
+pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
+    let (w, h) = (screen_width(), screen_height());
     let (ox, oy) = data.offset;
 
     let camera = Camera2D {
@@ -193,6 +194,19 @@ pub async fn render(data: &MainMenuRenderData, _assets: &AssetStore) {
         ..Default::default()
     };
     clear_background(WHITE);
+
+    // shader
+    set_default_camera();
+
+    let background_material = &assets.load().background_shader;
+    background_material.set_uniform("iResolution", (w, h));
+    background_material.set_uniform("speed", 0.2_f32);
+    gl_use_material(background_material);
+
+    draw_rectangle(0.0, 0.0, w, h, WHITE);
+    gl_use_default_material();
+
+    draw_rectangle(0.0, h * 0.15, w, h * 0.7, WHITE);
 
     // render world entities in camera space
     set_camera(&camera);

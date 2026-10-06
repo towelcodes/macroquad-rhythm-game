@@ -80,14 +80,46 @@ pub struct Data {}
 
 /// Bundle of loaded assets
 pub struct Assets {
-    ui_button_bg: Image,
-    note: Texture2D,
+    // ui_button_bg: Image,
+    // note: Texture2D,
+    background_shader: Material,
 }
 
 pub type AssetStore = LazyLock<ArcSwap<Assets>>;
 static ASSETS: AssetStore = LazyLock::new(|| {
     ArcSwap::from_pointee(load_assets(Path::new("textures")).expect("Failed to load assets"))
 });
+
+/// Loads assets from the specified directory
+pub fn load_assets(path: &Path) -> Result<Assets, Error> {
+    info!("Loading assets from {:?}", path);
+    // let chip = fs::read(path.join("chip.png")).unwrap_or_default();
+
+    // load the background shader
+    const VERTEX_SHADER: &str = include_str!("shader/background.vert.glsl");
+    const FRAGMENT_SHADER: &str = include_str!("shader/background.frag.glsl");
+
+    let material = load_material(
+        ShaderSource::Glsl {
+            vertex: VERTEX_SHADER,
+            fragment: FRAGMENT_SHADER,
+        },
+        MaterialParams {
+            uniforms: vec![
+                UniformDesc::new("iResolution", UniformType::Float2),
+                UniformDesc::new("speed", UniformType::Float1),
+            ],
+            ..Default::default()
+        },
+    )
+    .expect("Failed to load shader");
+
+    Ok(Assets {
+        // ui_button_bg: Image::from_file_with_format(&chip, Some(ImageFormat::Png))?,
+        background_shader: material,
+        // note: Texture2D::from_file_with_format(&chip, Some(ImageFormat::Png)),
+    })
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct DebugData {
@@ -97,16 +129,6 @@ pub struct DebugData {
 }
 
 pub type GlobalData = Arc<Data>;
-
-/// Loads assets from the specified directory
-pub fn load_assets(path: &Path) -> Result<Assets, Error> {
-    info!("Loading assets from {path:?}");
-    let chip = fs::read(path.join("chip.png")).unwrap_or_default();
-    Ok(Assets {
-        ui_button_bg: Image::from_file_with_format(&chip, Some(ImageFormat::Png))?,
-        note: Texture2D::from_file_with_format(&chip, Some(ImageFormat::Png)),
-    })
-}
 
 const NOTIFICATIONS_DURATION: Duration = Duration::from_secs(5);
 fn draw_notifications(
