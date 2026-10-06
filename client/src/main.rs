@@ -83,6 +83,7 @@ pub struct Assets {
     // ui_button_bg: Image,
     // note: Texture2D,
     background_shader: Material,
+    cal_sans: Font,
 }
 
 pub type AssetStore = LazyLock<ArcSwap<Assets>>;
@@ -114,9 +115,14 @@ pub fn load_assets(path: &Path) -> Result<Assets, Error> {
     )
     .expect("Failed to load shader");
 
+    // load fonts
+    let cal_sans = load_ttf_font_from_bytes(include_bytes!("../font/CalSans.ttf"))
+        .expect("Failed to load CalSans.ttf");
+
     Ok(Assets {
         // ui_button_bg: Image::from_file_with_format(&chip, Some(ImageFormat::Png))?,
         background_shader: material,
+        cal_sans,
         // note: Texture2D::from_file_with_format(&chip, Some(ImageFormat::Png)),
     })
 }

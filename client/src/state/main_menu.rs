@@ -216,7 +216,12 @@ pub async fn render(data: &MainMenuRenderData, assets: &AssetStore) {
     draw_circle_lines(0.15, -0.2, 0.1, 0.01, BLACK);
 
     // set the UI skin
-    let label_style = root_ui().style_builder().font_size(24).build();
+    let label_style = root_ui()
+        .style_builder()
+        .with_font(&assets.load().cal_sans)
+        .unwrap()
+        .font_size(24)
+        .build();
     let skin = Skin {
         label_style,
         ..root_ui().default_skin()
