@@ -5,12 +5,16 @@ use macroquad::{
     prelude::*,
     ui::{Skin, root_ui},
 };
+use serde::{Deserialize, Serialize};
 use triple_buffer::Input;
 
 use crate::{
-    AssetStore,
+    AssetStore, Notification,
     beatmap::{Beatmap, BeatmapMeta},
-    data::KeyAction,
+    data::{
+        GameConfig, KeyAction,
+        scores::{self, ScoreData},
+    },
     input::{Key, KeyEvent},
     state::playing::Judgement,
     update::{RenderState, StateTransition},
@@ -22,18 +26,29 @@ enum UiEvent {
     Retry,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct JudgementsSummary {
+    pub perfect: u32,
+    pub great: u32,
+    pub okay: u32,
+    pub bad: u32,
+    pub miss: u32,
+}
+
 /// Payload carried by the `StateTransition::Results` transition.
 pub struct ResultsData {
     pub score: u32,
     pub accuracy: f32,
     pub judgements: Vec<(Judgement, u32)>,
+    pub early_quit: bool,
     pub beatmap: Beatmap,
 }
 
 pub struct ResultsLogicData {
     score: u32,
     accuracy: f32,
-    judgements: Vec<(Judgement, u32)>,
+    judgements: JudgementsSummary,
+    early_quit: bool,
     beatmap: Beatmap,
     ui_tx: Sender<UiEvent>,
     ui_rx: Receiver<UiEvent>,
@@ -43,27 +58,66 @@ pub struct ResultsLogicData {
 pub struct ResultsRenderData {
     score: u32,
     accuracy: f32,
-    perfect: u32,
-    great: u32,
-    okay: u32,
-    bad: u32,
-    miss: u32,
+    judgements: JudgementsSummary,
+    early_quit: bool,
     meta: BeatmapMeta,
     ui_events_sender: Sender<UiEvent>,
 }
 
 pub fn init(
+    config: &GameConfig,
+    notify_tx: Sender<Notification>,
     score: u32,
     accuracy: f32,
     judgements: Vec<(Judgement, u32)>,
+    early_quit: bool,
     beatmap: Beatmap,
 ) -> ResultsLogicData {
     let (ui_tx, ui_rx) = crossbeam_channel::unbounded();
+
+    // count judgements
+    let (mut perfect, mut great, mut okay, mut bad, mut miss) = (0, 0, 0, 0, 0);
+
+    for (judgement, _) in judgements.iter() {
+        match judgement {
+            Judgement::Perfect(_) => perfect += 1,
+            Judgement::Great(_) => great += 1,
+            Judgement::Ok(_) => okay += 1,
+            Judgement::Bad(_) => bad += 1,
+            Judgement::Miss(_) => miss += 1,
+        }
+    }
+
+    let judgements_summary = JudgementsSummary {
+        perfect,
+        great,
+        okay,
+        bad,
+        miss,
+    };
+
+    // save score to db
+    if let Err(why) = scores::save_score(ScoreData {
+        by: config.user.clone(),
+        beatmap: &beatmap,
+        score,
+        accuracy,
+        early_quit,
+        judgements: judgements_summary,
+    }) {
+        warn!("failed to save score: {:?}", why);
+        let _ = notify_tx.send(Notification {
+            content: format!("Failed to save score! Check the logs for more details."),
+            color: RED,
+        });
+    }
+
     ResultsLogicData {
         score,
         accuracy,
-        judgements,
+        judgements: judgements_summary,
         beatmap,
+        early_quit,
         ui_tx,
         ui_rx,
     }
@@ -104,26 +158,11 @@ pub fn update(
         }
     }
 
-    // count judgements
-    let (mut perfect, mut great, mut okay, mut bad, mut miss) = (0, 0, 0, 0, 0);
-    for (judgement, _) in data.judgements.iter() {
-        match judgement {
-            Judgement::Perfect(_) => perfect += 1,
-            Judgement::Great(_) => great += 1,
-            Judgement::Ok(_) => okay += 1,
-            Judgement::Bad(_) => bad += 1,
-            Judgement::Miss(_) => miss += 1,
-        }
-    }
-
     render_input.write(RenderState::Results(ResultsRenderData {
         score: data.score,
         accuracy: data.accuracy,
-        perfect,
-        great,
-        okay,
-        bad,
-        miss,
+        judgements: data.judgements,
+        early_quit: data.early_quit,
         meta: data.beatmap.meta.clone(),
         ui_events_sender: data.ui_tx.clone(),
     }));
@@ -168,12 +207,15 @@ pub async fn render(data: &ResultsRenderData, _assets: &AssetStore) {
         (vec2(0.5, 0.48), AnchorPoint::Centre),
         &format!(
             "Perfect: {}   Great: {}   Ok: {}",
-            data.perfect, data.great, data.okay
+            data.judgements.perfect, data.judgements.great, data.judgements.okay
         ),
     );
     ui::label(
         (vec2(0.5, 0.54), AnchorPoint::Centre),
-        &format!("Bad: {}   Miss: {}", data.bad, data.miss),
+        &format!(
+            "Bad: {}   Miss: {}",
+            data.judgements.bad, data.judgements.miss
+        ),
     );
 
     // buttons

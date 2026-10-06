@@ -13,6 +13,8 @@ arc-swap = "1.9.1"
 kira = "0.12.2"
 serial_test = "3.5.0"
 rfd = "0.15"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+sha2 = "0.11.0"
 # shared wire protocol lives in the server crate's library
 rhythm-game-server = { path = "../server" }
 

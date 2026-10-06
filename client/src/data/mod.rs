@@ -2,15 +2,25 @@ use std::{
     collections::HashMap,
     error::Error,
     fs::{self, File, ReadDir, read_to_string},
+    hash::Hasher,
     io::Write,
     path::Path,
     write,
 };
 
 use macroquad::logging::{info, warn};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
-use crate::{beatmap::Beatmap, input::Key};
+use crate::{
+    beatmap::{Beatmap, BeatmapMeta},
+    data::scores::OfflineUser,
+    input::Key,
+    state::results::JudgementsSummary,
+};
+
+pub mod scores;
 
 const CONFIG_PATH: &str = "config.ron";
 
@@ -41,12 +51,14 @@ pub struct GameConfig {
     pub(crate) song_folder: String, // location of the songs folder
     pub(crate) lane_speed: u32,
     pub(crate) keybinds: HashMap<Key, KeyAction>,
+    pub(crate) user: OfflineUser,
 }
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
             song_folder: "songs".to_string(),
             lane_speed: 20,
+            user: OfflineUser::default(),
             keybinds: HashMap::from([
                 (Key::X, KeyAction::LaneUp),
                 (Key::C, KeyAction::LaneUpAlt),

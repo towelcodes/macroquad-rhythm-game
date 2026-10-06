@@ -319,6 +319,7 @@ pub fn update(
             accuracy: calculate_accuracy(&data.judgements),
             judgements: data.judgements.clone(),
             beatmap: data.beatmap.clone(),
+            early_quit: true,
         }));
     }
 
@@ -400,6 +401,7 @@ pub fn update(
             accuracy: calculate_accuracy(&data.judgements),
             judgements: data.judgements.clone(),
             beatmap: data.beatmap.clone(),
+            early_quit: false,
         }));
     }
 

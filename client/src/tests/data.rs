@@ -11,7 +11,7 @@ use crate::{
         HitObjectType::{self, Chip},
         Lane,
     },
-    data::{GameConfig, KeyAction, load_beatmaps},
+    data::{GameConfig, KeyAction, load_beatmaps, scores::OfflineUser},
     input::Key,
 };
 
@@ -40,6 +40,10 @@ fn save_and_load_config() {
     let config = GameConfig {
         song_folder: "my_songs".to_string(),
         lane_speed: 42,
+        user: OfflineUser {
+            id: 0,
+            name: "Anonymous".to_string(),
+        },
         keybinds: [
             (Key::X, KeyAction::LaneUp),
             (Key::C, KeyAction::LaneUpAlt),

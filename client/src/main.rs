@@ -18,6 +18,7 @@ use std::{
 };
 use triple_buffer::triple_buffer;
 
+use crate::data::scores;
 use crate::input::input_loop;
 use crate::state::*;
 use crate::update::{RenderState, start_update_thread};
@@ -157,6 +158,9 @@ async fn main() {
     // notification channel
     let (notify_tx, notify_rx) = crossbeam_channel::unbounded::<Notification>();
     let mut active_notifications = VecDeque::new();
+
+    // create scores database
+    scores::init().expect("Failed to initialize scores database");
 
     // render data buffer
     let (render_input, mut render_output) = triple_buffer(&RenderState::None);

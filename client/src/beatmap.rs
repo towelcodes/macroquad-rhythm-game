@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
@@ -40,8 +41,20 @@ pub struct BeatmapMeta {
     pub title: String,
     pub artist: String,
     pub mapper: String,
-    pub level: f32,
+    pub level: f32, // TODO change to u8
     pub level_name: String,
+}
+impl BeatmapMeta {
+    /// Get a sha256 of the BeatmapMeta
+    pub fn hash(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(format!(
+            "{}\0{}\0{}\0{}\0",
+            self.title, self.artist, self.mapper, self.level_name,
+        ));
+        hasher.update(self.level.to_bits().to_be_bytes());
+        hasher.finalize().into()
+    }
 }
 
 /// The full data for one level.
@@ -52,7 +65,6 @@ pub struct Beatmap {
     pub hit_objects: Vec<HitObject>,
     pub audio_path: String,
 }
-
 impl Default for Beatmap {
     fn default() -> Self {
         Self {
@@ -61,5 +73,21 @@ impl Default for Beatmap {
             hit_objects: Vec::new(),
             audio_path: String::new(),
         }
+    }
+}
+impl Beatmap {
+    /// Get a sha256 of the Beatmap
+    pub fn hash(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(self.meta.hash());
+
+        // sort hit objects
+        let mut sorted: Vec<&HitObject> = self.hit_objects.iter().collect();
+        sorted.sort_by_key(|h| (h.time, h.lane as u8, h.kind as u8));
+        for h in sorted {
+            hasher.update(format!("{:?}\0{:?}\0{:?}", h.time, h.kind, h.lane));
+        }
+
+        hasher.finalize().into()
     }
 }

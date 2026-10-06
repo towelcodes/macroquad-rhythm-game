@@ -207,9 +207,12 @@ impl StateMachine {
                     }
                 }
                 StateTransition::Results(data) => GameState::Results(results::init(
+                    &self.config,
+                    self.notify_tx.clone(),
                     data.score,
                     data.accuracy,
                     data.judgements,
+                    data.early_quit,
                     data.beatmap,
                 )),
                 StateTransition::Quit => {
