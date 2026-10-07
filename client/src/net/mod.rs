@@ -1,13 +1,39 @@
-use crate::util::ui::{self, AnchorPoint};
-use macroquad::prelude::*;
+use std::net::TcpStream;
 
-struct User {
+use crate::{
+    data::GameConfig,
+    util::ui::{self, AnchorPoint},
+};
+use crossbeam_channel::{Receiver, Sender};
+use macroquad::prelude::*;
+use rhythm_game_server::protocol::User;
+
+struct OnlineUser {
     active_token: [u8; 32],
-    username: String,
+    user: User,
+}
+
+#[derive(Debug, Clone)]
+pub enum NetEvent {}
+
+#[derive(Debug, Clone)]
+pub enum NetCommand {}
+
+const BACKEND_ADDRESS: &str = "127.0.0.1:7300";
+pub fn start_net_thread(net_event_tx: Sender<NetEvent>, net_cmd_rx: Receiver<NetCommand>) {
+    // create connection
+    match TcpStream::connect(BACKEND_ADDRESS) {
+        Ok(stream) => {
+            info!("connected to backend! {:?}", stream);
+        }
+        Err(why) => {
+            warn!("could not reach online services: {:?}", why);
+        }
+    }
 }
 
 struct NetState {
-    active_user: Option<User>,
+    active_user: Option<OnlineUser>,
 }
 
 impl NetState {

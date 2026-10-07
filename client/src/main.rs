@@ -20,6 +20,7 @@ use triple_buffer::triple_buffer;
 
 use crate::data::scores;
 use crate::input::input_loop;
+use crate::net::start_net_thread;
 use crate::state::*;
 use crate::update::{RenderState, start_update_thread};
 use crate::util::ui::{self, AnchorPoint};
@@ -230,6 +231,16 @@ async fn main() {
             )
         })
         .expect("Failed to spawn update thread");
+
+    // net thread
+    let (net_event_tx, net_event_rx) = crossbeam_channel::unbounded::<net::NetEvent>();
+    let (net_cmd_tx, net_cmd_rx) = crossbeam_channel::unbounded::<net::NetCommand>();
+    thread::Builder::new()
+        .name("net".to_string())
+        .spawn(move || {
+            start_net_thread(net_event_tx, net_cmd_rx);
+        })
+        .expect("Failed to spawn net thread");
 
     let target_fps = 120.0;
     let target_duration = Duration::from_secs_f32(1.0 / target_fps);

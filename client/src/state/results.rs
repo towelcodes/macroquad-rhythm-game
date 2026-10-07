@@ -21,18 +21,11 @@ use crate::{
     util::ui::{self, AnchorPoint},
 };
 
+use rhythm_game_server::protocol::JudgementsSummary;
+
 enum UiEvent {
     MainMenu,
     Retry,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct JudgementsSummary {
-    pub perfect: u32,
-    pub great: u32,
-    pub okay: u32,
-    pub bad: u32,
-    pub miss: u32,
 }
 
 /// Payload carried by the `StateTransition::Results` transition.

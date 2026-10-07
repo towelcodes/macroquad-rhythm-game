@@ -15,12 +15,13 @@ use crate::{
     beatmap::{Beatmap, BeatmapMeta, HitObject, HitObjectType, Lane},
     data::{
         GameConfig, KeyAction, load_beatmaps,
-        scores::{self, Score},
+        scores::{self},
     },
     input::{Key, KeyEvent},
     update::{RenderState, StateTransition},
     util::ui::{self, AnchorPoint},
 };
+use rhythm_game_server::protocol::Score;
 
 enum UiEvent {
     SelectSong(usize),

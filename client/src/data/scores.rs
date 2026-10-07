@@ -4,11 +4,8 @@ use macroquad::logging::info;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    beatmap::{Beatmap, BeatmapMeta},
-    state::results::JudgementsSummary,
-};
-
+use crate::beatmap::{Beatmap, BeatmapMeta};
+use rhythm_game_server::protocol::{JudgementsSummary, Score, User};
 /// Represets a user
 /// The id will be 0 if the user has no account
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -28,21 +25,6 @@ impl Default for OfflineUser {
 #[derive(Debug)]
 pub struct ScoreData<'a> {
     pub beatmap: &'a Beatmap,
-    pub by: OfflineUser,
-    pub early_quit: bool,
-    pub score: u32,
-    pub accuracy: f32,
-    pub judgements: JudgementsSummary,
-}
-
-/// Represents a score in the database
-#[derive(Debug, Clone)]
-pub struct Score {
-    pub id: i32,
-    /// sha256 of the beatmap data
-    pub beatmap_hash: [u8; 32],
-    /// sha256 of the beatmap meta; to match older versions
-    pub meta_hash: [u8; 32],
     pub by: OfflineUser,
     pub early_quit: bool,
     pub score: u32,
@@ -96,7 +78,7 @@ pub fn get_scores_on(meta: &BeatmapMeta) -> Result<Vec<Score>, Box<dyn Error>> {
             id: row.get(0)?,
             beatmap_hash: row.get(1)?,
             meta_hash: row.get(2)?,
-            by: OfflineUser {
+            by: User {
                 id: row.get(3)?,
                 name: row.get(4)?,
             },

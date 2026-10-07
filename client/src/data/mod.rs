@@ -17,8 +17,8 @@ use crate::{
     beatmap::{Beatmap, BeatmapMeta},
     data::scores::OfflineUser,
     input::Key,
-    state::results::JudgementsSummary,
 };
+use rhythm_game_server::protocol::JudgementsSummary;
 
 pub mod scores;
 

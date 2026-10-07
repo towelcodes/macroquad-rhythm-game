@@ -16,7 +16,7 @@ rfd = "0.15"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha2 = "0.11.0"
 # shared wire protocol lives in the server crate's library
-rhythm-game-server = { path = "../server" }
+rhythm_game_server = { path = "../server" }
 
 [target.'cfg(target_os="macos")'.dependencies]
 core-foundation = "0.10.1"
