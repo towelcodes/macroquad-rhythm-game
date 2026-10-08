@@ -20,6 +20,7 @@ use triple_buffer::triple_buffer;
 
 use crate::data::scores;
 use crate::input::input_loop;
+use crate::net::overlay::NetOverlayRenderData;
 use crate::net::start_net_thread;
 use crate::state::*;
 use crate::update::{RenderState, start_update_thread};
@@ -218,6 +219,17 @@ async fn main() {
         .spawn(move || input_loop(input_tx))
         .expect("Failed to spawn input thread");
 
+    // net thread
+    let (net_render_in, mut net_render_out) = triple_buffer(&NetOverlayRenderData::default());
+    let (net_req_tx, net_req_rx) = crossbeam_channel::unbounded::<(u32, net::NetRequest)>();
+    let (net_res_tx, net_res_rx) = crossbeam_channel::unbounded::<(u32, net::NetResponse)>();
+    thread::Builder::new()
+        .name("net".to_string())
+        .spawn(move || {
+            start_net_thread(net_req_rx, net_res_tx);
+        })
+        .expect("Failed to spawn net thread");
+
     // update thread
     thread::Builder::new()
         .name("update".to_string())
@@ -228,19 +240,12 @@ async fn main() {
                 notify_tx,
                 render_input,
                 &mut debug_input,
+                net_render_in,
+                net_req_tx,
+                net_res_rx,
             )
         })
         .expect("Failed to spawn update thread");
-
-    // net thread
-    let (net_event_tx, net_event_rx) = crossbeam_channel::unbounded::<net::NetEvent>();
-    let (net_cmd_tx, net_cmd_rx) = crossbeam_channel::unbounded::<net::NetCommand>();
-    thread::Builder::new()
-        .name("net".to_string())
-        .spawn(move || {
-            start_net_thread(net_event_tx, net_cmd_rx);
-        })
-        .expect("Failed to spawn net thread");
 
     let target_fps = 120.0;
     let target_duration = Duration::from_secs_f32(1.0 / target_fps);
@@ -272,6 +277,7 @@ async fn main() {
             RenderState::None => {}
         };
 
+        net::overlay::draw(net_render_out.read());
         draw_notifications(&notify_rx, &mut active_notifications);
 
         // limit fps

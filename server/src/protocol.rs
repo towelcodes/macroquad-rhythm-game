@@ -1,6 +1,6 @@
 use std::{
     error::Error,
-    io::{Read, Write},
+    io::{self, Read, Write},
 };
 
 use serde::{Deserialize, Serialize};
@@ -70,7 +70,7 @@ pub struct Score {
     pub judgements: JudgementsSummary,
 }
 
-pub fn recv<T: for<'de> Deserialize<'de>>(stream: &mut impl Read) -> Result<T, Box<dyn Error>> {
+pub fn recv<T: for<'de> Deserialize<'de>>(stream: &mut impl Read) -> io::Result<T> {
     // read length
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf)?;
@@ -78,7 +78,13 @@ pub fn recv<T: for<'de> Deserialize<'de>>(stream: &mut impl Read) -> Result<T, B
     println!("recv: len {}", len);
     let mut buf = vec![0u8; len as usize];
     stream.read_exact(&mut buf)?;
-    Ok(rmp_serde::from_slice(&buf)?)
+    match rmp_serde::from_slice(&buf) {
+        Ok(payload) => Ok(payload),
+        Err(e) => {
+            println!("recv: error deserializing: {:?}", e);
+            Err(io::Error::new(io::ErrorKind::InvalidData, e))
+        }
+    }
 }
 
 pub fn send<T: Serialize>(payload: T, stream: &mut impl Write) -> Result<(), Box<dyn Error>> {

@@ -17,6 +17,10 @@ use crate::{
     beatmap::Beatmap,
     data::GameConfig,
     input::KeyEvent,
+    net::{
+        self,
+        overlay::{NetOverlay, NetOverlayRenderData},
+    },
     state::{
         editor::{EditorLogicData, EditorRenderData},
         main_menu::{MainMenuLogicData, MainMenuRenderData},
@@ -33,6 +37,9 @@ pub fn start_update_thread(
     notify_tx: Sender<Notification>,
     render_input: Input<RenderState>,
     debug_input: &mut Input<DebugData>,
+    net_render_input: Input<NetOverlayRenderData>,
+    net_req_tx: Sender<(u32, net::NetRequest)>,
+    net_res_rx: Receiver<(u32, net::NetResponse)>,
 ) {
     // perform initial config load
     let config = GameConfig::load();
@@ -40,13 +47,6 @@ pub fn start_update_thread(
     // create FSM
     let mut state_machine = StateMachine::new(
         GameState::MainMenu(main_menu::init()),
-        //match editor::init(&config, input_rx.clone()) {
-        //     Ok(init_data) => GameState::Editor(init_data),
-        //     Err(why) => {
-        //         error!("failed to start editor: {:?}", why);
-        //         GameState::MainMenu(main_menu::init())
-        //     }
-        // },
         config,
         global_data,
         input_rx,
@@ -54,12 +54,16 @@ pub fn start_update_thread(
         render_input,
     );
 
+    // create net overlay
+    let mut net_overlay = NetOverlay::new(net_req_tx, net_res_rx, net_render_input);
+
     let target = Duration::from_secs_f32(1.0 / 500.0); // 500hz
     let mut last = Instant::now();
 
     info!("started update thread");
     loop {
         state_machine.update();
+        net_overlay.update();
 
         debug_input.write(DebugData {
             show: true,
