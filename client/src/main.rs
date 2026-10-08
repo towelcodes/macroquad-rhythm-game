@@ -84,14 +84,17 @@ pub struct Data {}
 pub struct Assets {
     // ui_button_bg: Image,
     // note: Texture2D,
+    globe_icon: Texture2D,
+    globe_off_icon: Texture2D,
     background_shader: Material,
     cal_sans: Font,
     title_skin: Skin,
 }
 
+// FIXME: do i even need this???? it all runs on the render thread anyway
 pub type AssetStore = LazyLock<ArcSwap<Assets>>;
 static ASSETS: AssetStore = LazyLock::new(|| {
-    ArcSwap::from_pointee(load_assets(Path::new("textures")).expect("Failed to load assets"))
+    ArcSwap::from_pointee(load_assets(Path::new("client/assets")).expect("Failed to load assets"))
 });
 
 /// Loads assets from the specified directory
@@ -118,8 +121,17 @@ pub fn load_assets(path: &Path) -> Result<Assets, Error> {
     )
     .expect("Failed to load shader");
 
+    // load icons
+    let globe_icon_bytes = fs::read(path.join("icon/globe.png")).expect("Failed to load globe.png");
+    let globe_icon = Texture2D::from_file_with_format(&globe_icon_bytes, Some(ImageFormat::Png));
+
+    let globe_off_icon_bytes =
+        fs::read(path.join("icon/globe-off.png")).expect("Failed to load globe-off.png");
+    let globe_off_icon =
+        Texture2D::from_file_with_format(&globe_off_icon_bytes, Some(ImageFormat::Png));
+
     // load fonts
-    let cal_sans = load_ttf_font_from_bytes(include_bytes!("../font/CalSans.ttf"))
+    let cal_sans = load_ttf_font_from_bytes(include_bytes!("../assets/font/CalSans.ttf"))
         .expect("Failed to load CalSans.ttf");
 
     // UI skins
@@ -139,7 +151,8 @@ pub fn load_assets(path: &Path) -> Result<Assets, Error> {
         background_shader: material,
         cal_sans,
         title_skin,
-        // note: Texture2D::from_file_with_format(&chip, Some(ImageFormat::Png)),
+        globe_icon,
+        globe_off_icon, // note: Texture2D::from_file_with_format(&chip, Some(ImageFormat::Png)),
     })
 }
 
@@ -277,7 +290,7 @@ async fn main() {
             RenderState::None => {}
         };
 
-        net::overlay::draw(net_render_out.read());
+        net::overlay::draw(net_render_out.read(), &ASSETS);
         draw_notifications(&notify_rx, &mut active_notifications);
 
         // limit fps

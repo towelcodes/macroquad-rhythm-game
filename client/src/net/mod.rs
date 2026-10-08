@@ -24,7 +24,7 @@ struct OnlineUser {
 
 #[derive(Debug, Clone)]
 pub enum NetRequest {
-    Status,
+    ConnectionStatus,
     UserRegister { username: String, password: String },
     UserLogin { username: String, password: String },
 }
@@ -35,11 +35,7 @@ pub enum NetResponse {
     Error,
     Disconnected,
     Timeout,
-    Status {
-        user: Option<User>,
-        connected: bool,
-        ping: u32,
-    },
+    ConnectionStatus { connected: bool, ping: u32 },
 }
 
 const BACKEND_ADDRESS: &str = "127.0.0.1:7300";
@@ -69,8 +65,7 @@ pub fn start_net_thread(req_rx: Receiver<(u32, NetRequest)>, res_tx: Sender<(u32
                                 if let Some(status_request) = active_status_request {
                                     if let Err(why) = res_tx.send((
                                         status_request.0,
-                                        NetResponse::Status {
-                                            user: None,
+                                        NetResponse::ConnectionStatus {
                                             connected: true,
                                             ping: status_request.1.elapsed().as_millis() as u32,
                                         },
@@ -94,6 +89,15 @@ pub fn start_net_thread(req_rx: Receiver<(u32, NetRequest)>, res_tx: Sender<(u32
                         ErrorKind::WouldBlock => {}
                         _ => {
                             warn!("error receiving packet: {:?}", e);
+                            res_tx
+                                .send((
+                                    0,
+                                    NetResponse::ConnectionStatus {
+                                        connected: false,
+                                        ping: 0,
+                                    },
+                                ))
+                                .expect("failed to send net response");
                             break;
                         }
                     },
@@ -102,7 +106,7 @@ pub fn start_net_thread(req_rx: Receiver<(u32, NetRequest)>, res_tx: Sender<(u32
                 req_rx.try_iter().for_each(|(id, req)| {
                     info!("received net request {}: {:?}", id, req);
                     match req {
-                        NetRequest::Status => {
+                        NetRequest::ConnectionStatus => {
                             // send status request
                             if let Err(why) = send(ClientboundPacket::Ping, &mut stream) {
                                 warn!("error sending ping: {:?}", why);
