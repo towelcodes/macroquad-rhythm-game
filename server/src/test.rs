@@ -24,7 +24,7 @@ pub fn migrations_apply_once() {
 pub fn register_user_returns_id_and_token() {
     let mut controller = setup();
     let (uid, token) = controller
-        .register_user("joeb".into(), "hunter2".into())
+        .register_user("user1".into(), "pw1".into())
         .unwrap();
     assert_ne!(uid, 0);
     assert_ne!(token, [0u8; 32]);
@@ -34,10 +34,10 @@ pub fn register_user_returns_id_and_token() {
 pub fn register_duplicate_username_fails() {
     let mut controller = setup();
     controller
-        .register_user("joeb".into(), "hunter2".into())
+        .register_user("user1".into(), "pw1".into())
         .unwrap();
     let err = controller
-        .register_user("joeb".into(), "different password".into())
+        .register_user("user1".into(), "pw2".into())
         .unwrap_err();
     assert!(matches!(err, DbError::AccountAlreadyExists));
 }

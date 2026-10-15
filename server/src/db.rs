@@ -110,7 +110,8 @@ impl DatabaseController {
             "INSERT INTO users (
                 username,
                 password_bcrypt
-            ) VALUES (?1, ?2)",
+            ) VALUES (?1, ?2)
+            RETURNING uid",
             (username, hash),
             |row| row.get(0),
         )?;
@@ -127,7 +128,7 @@ impl DatabaseController {
         self.conn.execute(
             "INSERT INTO tokens (
                 token,
-                uid,
+                uid
             ) VALUES (?1, ?2)",
             (token, uid),
         )?;
