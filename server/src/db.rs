@@ -9,7 +9,7 @@ use rusqlite::{
     Error::{QueryReturnedMoreThanOneRow, QueryReturnedNoRows},
 };
 
-use crate::db::DbError::Sqlite;
+use crate::db::DbError::{IncorrectCredentials, Sqlite};
 
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
@@ -56,7 +56,7 @@ impl DatabaseController {
 
     /// Invalidates an existing access token
     pub fn logout_user(&mut self, uid: u32, token: [u8; 32]) -> Result<(), DbError> {
-        if !self.validate_auth(token, uid)? {
+        if !self.verify_token(token, uid)? {
             return Err(DbError::NotAuthorized);
         }
 
@@ -69,19 +69,24 @@ impl DatabaseController {
 
     /// Logs in a user, returning the access token.
     pub fn login_user(&mut self, username: String, password: String) -> Result<[u8; 32], DbError> {
-        // hash the password
-        let password_hash = bcrypt::hash(password, DEFAULT_COST)?;
-
         let mut stmt = self
             .conn
-            .prepare("SELECT uid FROM users WHERE username = ?1 AND password_bcrypt = ?2")?;
-        match stmt.query_row([&username, &password_hash], |row| row.get(0)) {
-            Ok(uid) => {
-                mem::drop(stmt);
-                Ok(self.generate_token(uid)?)
-            }
+            .prepare("SELECT uid, password_bcrypt FROM users WHERE username = ?1")?;
+
+        let result = stmt.query_row([&username], |row| {
+            Ok((row.get(0)?, row.get::<_, String>(1)?))
+        });
+        match result {
+            Ok((uid, password_hash)) => match bcrypt::verify(password, &password_hash) {
+                Ok(true) => {
+                    mem::drop(stmt);
+                    Ok(self.generate_token(uid)?)
+                }
+                Ok(false) => Err(IncorrectCredentials),
+                Err(why) => Err(DbError::Bcrypt(why)),
+            },
             Err(QueryReturnedNoRows) => Err(DbError::IncorrectCredentials),
-            Err(why) => return Err(DbError::Sqlite(why)),
+            Err(why) => Err(DbError::Sqlite(why)),
         }
     }
 
@@ -137,7 +142,7 @@ impl DatabaseController {
 
     // TODO: cache these for faster responses
     /// Checks if an authentication token is valid for a given user ID.
-    fn validate_auth(&mut self, token: [u8; 32], user: u32) -> Result<bool, DbError> {
+    fn verify_token(&mut self, token: [u8; 32], user: u32) -> Result<bool, DbError> {
         let mut stmt = self
             .conn
             .prepare("SELECT uid FROM tokens WHERE token = ?1")?;
