@@ -8,12 +8,14 @@ use std::{
 
 use rhythm_game_server::protocol::{ClientboundPacket, NetError, ServerboundPacket, recv, send};
 
+#[cfg(test)]
+mod test;
+
+mod db;
+
 // runs on a seperate thread for each client
 fn recv_loop(stream: TcpStream) {
     println!("opened a new connection: {:?}", stream);
-    // stream
-    //     .set_read_timeout(Some(Duration::from_secs(10)))
-    //     .expect("Failed to set read timeout");
     loop {
         match recv::<ServerboundPacket>(&mut &stream) {
             Ok(packet) => {

@@ -9,3 +9,5 @@ rmp-serde = "1.3.1"
 bcrypt = "0.15"
 sha2 = "0.11.0"
 rand = "0.8"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+thiserror = "2"

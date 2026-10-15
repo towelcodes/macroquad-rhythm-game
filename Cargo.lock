@@ -1930,8 +1930,10 @@ dependencies = [
  "bcrypt",
  "rand 0.8.8",
  "rmp-serde",
+ "rusqlite",
  "serde",
  "sha2",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
