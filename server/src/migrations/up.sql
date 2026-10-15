@@ -1,3 +1,4 @@
+BEGIN;
 CREATE TABLE users (
     uid integer PRIMARY KEY,
     username text,
@@ -25,3 +26,4 @@ CREATE TABLE scores (
     miss integer,
     FOREIGN KEY(by_uid) REFERENCES users(uid)
 );
+COMMIT;

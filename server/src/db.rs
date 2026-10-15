@@ -50,7 +50,7 @@ impl DatabaseController {
             println!("DB migrations not required");
             return Ok(false);
         }
-        self.conn.execute(include_str!("migrations/up.sql"), ())?;
+        self.conn.execute_batch(include_str!("migrations/up.sql"))?;
         Ok(true)
     }
 
