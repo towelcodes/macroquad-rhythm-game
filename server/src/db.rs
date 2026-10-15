@@ -154,6 +154,7 @@ impl DatabaseController {
                     Ok(false)
                 }
             }
+            Err(QueryReturnedNoRows) => Ok(false),
             Err(e) => Err(Sqlite(e)),
         }
     }
