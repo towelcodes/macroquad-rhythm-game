@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     io::{Read, Write},
+    mem,
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex, RwLock},
     thread,
@@ -40,6 +41,7 @@ fn recv_loop(stream: TcpStream, con: Arc<Mutex<DatabaseController>>) {
                         let mut lock = con.lock().unwrap();
                         match lock.register_user(username.clone(), password) {
                             Ok((uid, token)) => {
+                                mem::drop(lock); // drop the lock first so we don't wait for send
                                 if let Err(e) = send(
                                     ClientboundPacket::LoggedIn {
                                         id,
@@ -53,11 +55,44 @@ fn recv_loop(stream: TcpStream, con: Arc<Mutex<DatabaseController>>) {
                                 }
                             }
                             Err(why) => {
+                                mem::drop(lock);
                                 eprintln!("failed to register user: {why}");
                                 if let Err(e) = send(
                                     ClientboundPacket::Error(0, NetError::Malformed),
                                     &mut &stream,
                                 ) {
+                                    eprintln!("failed to send error: {e}");
+                                }
+                            }
+                        }
+                    }
+                    ServerboundPacket::Login {
+                        username,
+                        password,
+                        id,
+                    } => {
+                        let mut lock = con.lock().unwrap();
+                        match lock.login_user(username.clone(), password) {
+                            Ok((uid, token)) => {
+                                mem::drop(lock);
+                                if let Err(e) = send(
+                                    ClientboundPacket::LoggedIn {
+                                        id,
+                                        uid,
+                                        username,
+                                        token,
+                                    },
+                                    &mut &stream,
+                                ) {
+                                    eprintln!("failed to send response: {e}");
+                                }
+                            }
+                            Err(why) => {
+                                mem::drop(lock);
+                                eprintln!("failed to login user: {why}");
+                                if let Err(e) =
+                                    send(ClientboundPacket::AuthInvalid(id), &mut &stream)
+                                {
                                     eprintln!("failed to send error: {e}");
                                 }
                             }
@@ -85,7 +120,7 @@ fn recv_loop(stream: TcpStream, con: Arc<Mutex<DatabaseController>>) {
 
 fn main() -> std::io::Result<()> {
     // load or create the database
-    // we use an arc/lock so we can share it across threads
+    // we use an arc/mutex so we can share it across threads
     //  - in a production environment a connection pool
     //    or other alternative method should be used for performance
     let con = Arc::new(Mutex::new(

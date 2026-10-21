@@ -160,6 +160,21 @@ pub fn start_net_thread(req_rx: Receiver<(u32, NetRequest)>, res_tx: Sender<(u32
                                     .expect("failed to send net response");
                             }
                         }
+                        NetRequest::UserLogin { username, password } => {
+                            if let Err(why) = send(
+                                ServerboundPacket::Login {
+                                    id,
+                                    username,
+                                    password,
+                                },
+                                &mut stream,
+                            ) {
+                                warn!("error logging in: {:?}", why);
+                                res_tx
+                                    .send((id, NetResponse::Error))
+                                    .expect("failed to send net response");
+                            }
+                        }
                         _ => {
                             warn!("not implemented");
                         }

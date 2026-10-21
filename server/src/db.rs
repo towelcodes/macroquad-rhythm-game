@@ -68,7 +68,11 @@ impl DatabaseController {
     }
 
     /// Logs in a user, returning the access token.
-    pub fn login_user(&mut self, username: String, password: String) -> Result<[u8; 32], DbError> {
+    pub fn login_user(
+        &mut self,
+        username: String,
+        password: String,
+    ) -> Result<(u32, [u8; 32]), DbError> {
         let mut stmt = self
             .conn
             .prepare("SELECT uid, password_bcrypt FROM users WHERE username = ?1")?;
@@ -80,7 +84,7 @@ impl DatabaseController {
             Ok((uid, password_hash)) => match bcrypt::verify(password, &password_hash) {
                 Ok(true) => {
                     mem::drop(stmt);
-                    Ok(self.generate_token(uid)?)
+                    Ok((uid, self.generate_token(uid)?))
                 }
                 Ok(false) => Err(IncorrectCredentials),
                 Err(why) => Err(DbError::Bcrypt(why)),

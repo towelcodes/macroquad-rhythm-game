@@ -110,7 +110,34 @@ impl NetOverlay {
     }
 
     /// login callback
-    fn login(&self) {}
+    fn login(&mut self) {
+        if self.connected != ConnectionState::Connected {
+            self.status_text = Some("Online services cannot be reached".to_string());
+        }
+
+        // perform input validation
+        if self.username_entry.is_empty() || self.password_entry.is_empty() {
+            self.status_text = Some("Username and password cannot be empty".to_string());
+            return;
+        }
+
+        // send message to net thread
+        if let Err(why) = self.req_tx.send((
+            self.request,
+            NetRequest::UserLogin {
+                username: self.username_entry.clone(),
+                password: self.password_entry.clone(),
+            },
+        )) {
+            error!("failed to send request to net thread: {:?}", why);
+            self.status_text = Some("Failed to send request to net thread".to_string());
+            self.request += 1;
+            return;
+        }
+
+        self.request += 1;
+        self.status_text = Some("Logging in...".to_string());
+    }
 
     /// register callback
     fn register(&mut self) {
@@ -167,6 +194,7 @@ impl NetOverlay {
                         self.user = Some(user.clone());
                         Some(format!("Logged in as {}", user.name))
                     } else {
+                        self.user = None;
                         Some("Not logged in".to_string())
                     };
                 }
@@ -181,7 +209,7 @@ impl NetOverlay {
                 UiEvent::SetUsername(username) => self.username_entry = username,
                 UiEvent::SetPassword(password) => self.password_entry = password,
                 UiEvent::Login => {
-                    self.status_text = Some("Logging in...".to_string());
+                    self.login();
                 }
                 UiEvent::Register => {
                     self.register();
@@ -301,7 +329,7 @@ pub fn draw(data: &NetOverlayRenderData, assets: &AssetStore) {
         if let Some(user) = &data.user {
             format!("Logged in as {}", user.name)
         } else {
-            "Not logged in".to_string()
+            format!("Not logged in")
         },
         20.0,
         screen_height() - 60.0,
