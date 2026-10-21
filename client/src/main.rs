@@ -233,7 +233,7 @@ async fn main() {
         .expect("Failed to spawn input thread");
 
     // net thread
-    let (net_render_in, mut net_render_out) = triple_buffer(&NetOverlayRenderData::default());
+    let (net_render_in, mut net_render_out) = triple_buffer::<Option<NetOverlayRenderData>>(&None);
     let (net_req_tx, net_req_rx) = crossbeam_channel::unbounded::<(u32, net::NetRequest)>();
     let (net_res_tx, net_res_rx) = crossbeam_channel::unbounded::<(u32, net::NetResponse)>();
     thread::Builder::new()
@@ -290,7 +290,9 @@ async fn main() {
             RenderState::None => {}
         };
 
-        net::overlay::draw(net_render_out.read(), &ASSETS);
+        if let Some(data) = net_render_out.read() {
+            net::overlay::draw(data, &ASSETS);
+        }
         draw_notifications(&notify_rx, &mut active_notifications);
 
         // limit fps

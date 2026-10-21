@@ -16,26 +16,46 @@ pub enum NetError {
     Other(String),
 }
 
+/// All packets have a correlation ID which will
+/// be repeated in reply
 #[repr(u8)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ServerboundPacket {
-    Hello,
-    Ping,
-    Pong,
-    Login { username: String, password: String },
-    Register { username: String, password: String },
-    SubmitScore { token: [u8; 32], score: Score },
+    Ping(u32),
+    Pong(u32),
+    Login {
+        username: String,
+        password: String,
+        id: u32,
+    },
+    Register {
+        username: String,
+        password: String,
+        id: u32,
+    },
+    SubmitScore {
+        token: [u8; 32],
+        score: Score,
+        id: u32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ClientboundPacket {
-    Error(NetError),
-    Ok,
-    Ping,
-    Pong,
-    TokenInvalid,
-    AuthInvalid,
-    AuthValid([u8; 32]),
+    Error(u32, NetError),
+    /// Generic Ok for responses that don't need any other information
+    Ok(u32),
+    Ping(u32),
+    Pong(u32),
+    TokenInvalid(u32),
+    AuthInvalid(u32),
+    /// Sent after a successful login or registration, containing the access token and user ID
+    LoggedIn {
+        id: u32,
+        uid: u32,
+        username: String,
+        token: [u8; 32],
+    },
 }
 
 /// Represets a user

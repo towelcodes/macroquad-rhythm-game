@@ -37,7 +37,7 @@ pub fn start_update_thread(
     notify_tx: Sender<Notification>,
     render_input: Input<RenderState>,
     debug_input: &mut Input<DebugData>,
-    net_render_input: Input<NetOverlayRenderData>,
+    net_render_input: Input<Option<NetOverlayRenderData>>,
     net_req_tx: Sender<(u32, net::NetRequest)>,
     net_res_rx: Receiver<(u32, net::NetResponse)>,
 ) {

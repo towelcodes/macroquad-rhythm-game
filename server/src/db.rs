@@ -97,6 +97,8 @@ impl DatabaseController {
         username: String,
         password: String,
     ) -> Result<(u32, [u8; 32]), DbError> {
+        // FIXME input validation should happen here, not on the client!
+
         // check if the user exists already
         let mut stmt = self
             .conn
