@@ -1,5 +1,6 @@
 use std::{
-    io::ErrorKind,
+    fs::{File, read_to_string},
+    io::{self, ErrorKind, Write},
     net::TcpStream,
     sync::TryLockError::WouldBlock,
     time::{Duration, Instant},
@@ -13,18 +14,21 @@ use crate::{
 use crossbeam_channel::{Receiver, Sender};
 use macroquad::prelude::*;
 use rhythm_game_server::protocol::{ClientboundPacket, ServerboundPacket, User, recv, send};
+use serde::{Deserialize, Serialize};
 use triple_buffer::Input;
 
 pub mod overlay;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct OnlineUser {
-    active_token: [u8; 32],
-    user: User,
+    pub active_token: [u8; 32],
+    pub user: User,
 }
 
 #[derive(Debug, Clone)]
 pub enum NetRequest {
     ConnectionStatus,
+    LoginStatus,
     UserRegister { username: String, password: String },
     UserLogin { username: String, password: String },
 }
@@ -35,19 +39,33 @@ pub enum NetResponse {
     Error,
     Disconnected,
     Timeout,
-    ConnectionStatus {
-        connected: bool,
-        ping: u32,
-    },
-    LoginStatus {
-        user: Option<User>,
-        token: Option<[u8; 32]>,
-    },
+    ConnectionStatus { connected: bool, ping: u32 },
+    LoginStatus(Option<OnlineUser>),
+}
+
+fn load_user_data(path: &str) -> Option<OnlineUser> {
+    match read_to_string(path) {
+        Ok(data) => ron::from_str(&data).unwrap_or(None),
+        Err(_) => None,
+    }
+}
+
+fn save_user_data(path: &str, data: Option<OnlineUser>) -> Result<(), io::Error> {
+    // save user login data
+    let mut output = File::create(path)?;
+    let ron = ron::to_string(&data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    write!(output, "{}", ron)?;
+    Ok(())
 }
 
 const BACKEND_ADDRESS: &str = "127.0.0.1:7300";
+const USER_PATH: &str = "user.ron";
 pub fn start_net_thread(req_rx: Receiver<(u32, NetRequest)>, res_tx: Sender<(u32, NetResponse)>) {
     let mut active_status_request: Option<(u32, Instant)> = None;
+
+    // load user data file
+    let mut active_online_user: Option<OnlineUser> = load_user_data(USER_PATH);
+    info!("loaded user login state: {:?}", active_online_user);
 
     // create connection
     match TcpStream::connect(BACKEND_ADDRESS) {
@@ -63,6 +81,7 @@ pub fn start_net_thread(req_rx: Receiver<(u32, NetRequest)>, res_tx: Sender<(u32
                 .expect("failed to set read timeout");
 
             loop {
+                // read incoming packets
                 match recv::<ClientboundPacket>(&mut stream) {
                     Ok(packet) => {
                         info!("received packet: {:?}", packet);
@@ -94,17 +113,26 @@ pub fn start_net_thread(req_rx: Receiver<(u32, NetRequest)>, res_tx: Sender<(u32
                                 token,
                             } => {
                                 info!("Logged in {} {}", id, uid);
+
+                                active_online_user = Some(OnlineUser {
+                                    active_token: token,
+                                    user: User {
+                                        name: username.clone(),
+                                        id: uid,
+                                    },
+                                });
+
                                 if let Err(why) = res_tx.send((
                                     id,
-                                    NetResponse::LoginStatus {
-                                        user: Some(User {
-                                            name: username,
-                                            id: uid,
-                                        }),
-                                        token: Some(token),
-                                    },
+                                    NetResponse::LoginStatus(active_online_user.clone()),
                                 )) {
                                     warn!("error sending net response: {:?}", why);
+                                }
+
+                                if let Err(why) =
+                                    save_user_data(USER_PATH, active_online_user.clone())
+                                {
+                                    warn!("error saving user data: {:?}", why);
                                 }
                             }
                             _ => {
@@ -134,6 +162,12 @@ pub fn start_net_thread(req_rx: Receiver<(u32, NetRequest)>, res_tx: Sender<(u32
                 req_rx.try_iter().for_each(|(id, req)| {
                     info!("received net request {}: {:?}", id, req);
                     match req {
+                        NetRequest::LoginStatus => {
+                            // reply with the current login status
+                            res_tx
+                                .send((id, NetResponse::LoginStatus(active_online_user.clone())))
+                                .expect("failed to send net response");
+                        }
                         NetRequest::ConnectionStatus => {
                             // send status request
                             if let Err(why) = send(ServerboundPacket::Ping(0), &mut stream) {

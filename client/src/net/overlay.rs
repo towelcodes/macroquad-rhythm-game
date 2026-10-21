@@ -92,6 +92,30 @@ impl NetOverlay {
         }
         request += 1;
 
+        // perform initial user check
+        if let Err(why) = req_tx.send((request, NetRequest::LoginStatus)) {
+            warn!(
+                "failed to perform initial user check {:?}, using offline mode",
+                why
+            );
+            return Self {
+                request,
+                ping: 0,
+                connected: ConnectionState::Disconnected,
+                user: None,
+                req_tx,
+                res_rx,
+                ui_tx,
+                ui_rx,
+                input,
+                show_window: false,
+                username_entry: "".to_string(),
+                password_entry: "".to_string(),
+                status_text: None,
+            };
+        }
+        request += 1;
+
         Self {
             request,
             ping: 0,
@@ -189,10 +213,10 @@ impl NetOverlay {
                         ConnectionState::Disconnected
                     };
                 }
-                NetResponse::LoginStatus { user, token: _ } => {
-                    self.status_text = if let Some(user) = user {
-                        self.user = Some(user.clone());
-                        Some(format!("Logged in as {}", user.name))
+                NetResponse::LoginStatus(user) => {
+                    self.status_text = if let Some(online_user) = user {
+                        self.user = Some(online_user.user.clone());
+                        Some(format!("Logged in as {}", online_user.user.name))
                     } else {
                         self.user = None;
                         Some("Not logged in".to_string())
